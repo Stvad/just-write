@@ -4,8 +4,8 @@ import { useActionState } from "react";
 import { submitInterest, type InterestState } from "./actions";
 
 const input =
-  "min-h-[46px] w-full rounded-none border border-ink/28 bg-cream px-3.5 py-3 font-body text-[19px] text-inherit";
-const fieldLabel = "text-[13px] tracking-[0.12em] uppercase text-ink-muted";
+  "min-h-[42px] w-full rounded-none border border-ink/28 bg-cream px-3 py-2 font-body text-[17px] text-inherit";
+const fieldLabel = "text-[12px] tracking-[0.12em] uppercase text-ink-muted";
 
 export function InterestForm() {
   const [state, action, pending] = useActionState<InterestState, FormData>(
@@ -18,17 +18,11 @@ export function InterestForm() {
       id="interest"
       action={action}
       aria-label="Express interest"
-      className="flex scroll-mt-6 flex-col gap-[clamp(14px,2.2vh,22px)] bg-cream-deep p-[clamp(20px,min(2.4vw,3.4vh),32px)]"
+      className="flex scroll-mt-6 flex-col gap-3 bg-cream-deep p-[clamp(16px,min(2vw,2.6vh),24px)]"
     >
-      <div className="flex flex-wrap items-baseline justify-between gap-x-5 gap-y-1.5">
-        {/* <h2 className="font-display text-[clamp(30px,4.2vh,36px)] leading-[1.05] font-[340] tracking-[-0.015em]">
-          Want to join?
-        </h2> */}
-      </div>
-
       <>
-        <div className="grid grid-cols-[repeat(auto-fit,minmax(min(200px,100%),1fr))] gap-x-6 gap-y-3.5">
-          <div className="flex flex-col gap-1.5">
+        <div className="grid grid-cols-[repeat(auto-fit,minmax(min(200px,100%),1fr))] gap-x-5 gap-y-3">
+          <div className="flex flex-col gap-1">
             <label htmlFor="jw-name" className={fieldLabel}>
               Name
             </label>
@@ -42,7 +36,7 @@ export function InterestForm() {
               className={input}
             />
           </div>
-          <div className="flex flex-col gap-1.5">
+          <div className="flex flex-col gap-1">
             <label htmlFor="jw-email" className={fieldLabel}>
               Email
             </label>
@@ -56,47 +50,46 @@ export function InterestForm() {
               className={input}
             />
           </div>
-          <div className="col-span-full flex flex-col gap-1.5">
-            <label htmlFor="jw-website" className={fieldLabel}>
-              Website
-            </label>
-            <input
-              id="jw-website"
-              name="website"
-              type="text"
-              inputMode="url"
-              autoComplete="url"
-              autoCapitalize="none"
-              spellCheck={false}
-              required
-              placeholder="kitwhen.com or x.com/kitwhen"
-              className={input}
-            />
+          <div className="col-span-full flex flex-wrap gap-x-5 gap-y-3">
+            <div className="flex min-w-[min(240px,100%)] flex-1 flex-col gap-1">
+              <label htmlFor="jw-website" className={fieldLabel}>
+                Website
+              </label>
+              <input
+                id="jw-website"
+                name="website"
+                type="text"
+                inputMode="url"
+                autoComplete="url"
+                autoCapitalize="none"
+                spellCheck={false}
+                required
+                placeholder="kitwhen.com or x.com/kitwhen"
+                className={input}
+              />
+            </div>
+            <button
+              type="submit"
+              disabled={pending}
+              className="flex min-h-[42px] cursor-pointer flex-none items-center justify-center gap-2.5 self-end whitespace-nowrap rounded-none bg-ink px-5 font-body text-[17px] tracking-[0.02em] text-cream disabled:cursor-wait disabled:opacity-70"
+            >
+              {pending ? "Sending…" : "Express interest"}
+              <svg
+                aria-hidden="true"
+                width="18"
+                height="12"
+                viewBox="0 0 18 12"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+              >
+                <path d="M0 6h16M11 1l5 5-5 5" />
+              </svg>
+            </button>
           </div>
         </div>
-
-        <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3.5">
-          <button
-            type="submit"
-            disabled={pending}
-            className="flex min-h-[50px] cursor-pointer items-center gap-3 rounded-none bg-ink px-[26px] font-body text-[19px] tracking-[0.02em] text-cream disabled:cursor-wait disabled:opacity-70"
-          >
-            {pending ? "Sending…" : "Express interest"}
-            <svg
-              aria-hidden="true"
-              width="18"
-              height="12"
-              viewBox="0 0 18 12"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.5"
-            >
-              <path d="M0 6h16M11 1l5 5-5 5" />
-            </svg>
-          </button>
-        </div>
         {state.status === "error" && (
-          <p role="alert" className="-mt-2 text-base text-ink">
+          <p role="alert" className="text-[15px] text-ink">
             {state.message}
           </p>
         )}

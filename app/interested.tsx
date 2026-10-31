@@ -29,8 +29,8 @@ function firstName(name: string) {
 function Row({ label, people }: { label: string; people: Person[] }) {
   if (people.length === 0) return null;
   return (
-    <p className="text-[clamp(15px,2.4vh,17px)] leading-[1.5] text-pretty text-ink-muted">
-      <span className="mr-2 text-[13px] tracking-[0.12em] uppercase">
+    <p className="text-[clamp(13px,2vh,15px)] leading-[1.55] text-pretty text-ink-muted">
+      <span className="mr-2 text-[11px] tracking-[0.12em] uppercase">
         {label}:
       </span>
       {people.map((p, i) => (
@@ -40,7 +40,7 @@ function Row({ label, people }: { label: string; people: Person[] }) {
               href={p.link}
               target="_blank"
               rel="noopener noreferrer nofollow ugc"
-              className="text-ink"
+              className="decoration-wash"
             >
               {firstName(p.name)}
             </a>
