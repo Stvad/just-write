@@ -107,12 +107,25 @@ How this run works:
 - Before each step, write one short, plain sentence about what you're doing, e.g. "Looking at how the chat composer works." or "Adding a word count under the message box." Members see these sentences live as a checklist, so write them for people, not programmers, and keep them under 80 characters.
 - Keep the change focused on what was asked, and follow CLAUDE.md and the site's existing patterns, design tokens, and plain copy style.
 - If the request is unclear, far too large, would hurt members, or touches payments, terms, or other members' private data, don't change code: explain briefly in your final message instead. If it's a question, just answer it.
-- Changes under convex/ only go live when merged (preview deployments share the live backend), so say so if a preview won't fully show the change.
+- Changes under convex/ deploy automatically when merged, but previews share the live backend, so a preview won't show them until then. If that matters for this change, say so in one short clause in your chat reply.
 
-Your final message is posted in chat. Format it exactly like this:
-TITLE: <short imperative title for the commit, under 70 characters>
-<One short paragraph for members: what changed and where to see it, in plain language. No headings, lists, or file paths.>
-If you changed no files, write TITLE: none and then your reply.`;
+When you're done, return the structured result:
+- title: a short imperative commit title, under 70 characters. Empty if you changed no files.
+- chat: what members see in the thread. One or two short, plain sentences: what changed and where to see it. No lists, headings, file paths, or caveats about checks. If you changed no files, this is your answer or explanation, still short.
+- details: notes for the admin reviewing the PR, in Markdown: decisions you made, new dependencies, limitations, anything to test by hand. Empty if there's nothing worth saying.`;
+
+const RESULT_SCHEMA = {
+  type: "object",
+  properties: {
+    title: { type: "string" },
+    chat: { type: "string" },
+    details: { type: "string" },
+  },
+  required: ["title", "chat", "details"],
+  additionalProperties: false,
+};
+
+type Final = { title: string | null; summary: string; details: string };
 
 function prompt() {
   const thread = brief.thread
@@ -133,19 +146,25 @@ function prompt() {
 // First sentence of a narration block, if it's short enough to show as a checklist line.
 function statusLine(text: string) {
   const t = text.trim();
-  if (!t || t.startsWith("TITLE:")) return null;
+  if (!t) return null;
   const first = t.split(/(?<=[.!?:])\s|\n/)[0].replace(/[:.]$/, "").trim();
   // Long sentences are usually reasoning, not narration; skip them rather than truncate.
   return first.length >= 8 && first.length <= 100 ? first : null;
 }
 
-function parseFinal(text: string) {
-  const m = text.trim().match(/^TITLE:\s*(.+)\n?([\s\S]*)$/);
-  if (!m) return { title: null, summary: text.trim() };
-  const title = m[1].trim();
+// The agent's structured result, or (if it somehow didn't return one) its last message.
+function parseFinal(structured: unknown, text: string): Final {
+  const o = (structured ?? {}) as Record<string, unknown>;
+  const str = (k: string) => (typeof o[k] === "string" ? (o[k] as string).trim() : "");
+  if (str("chat"))
+    return { title: str("title").slice(0, 100) || null, summary: str("chat"), details: str("details") };
+  // Fallback: a "TITLE: ..." line anywhere in the text, everything else as the summary.
+  const m = text.match(/^TITLE:\s*(.+)$/m);
+  const title = m?.[1].trim();
   return {
-    title: /^none$/i.test(title) ? null : title.slice(0, 100),
-    summary: m[2].trim() || title,
+    title: title && !/^none$/i.test(title) ? title.slice(0, 100) : null,
+    summary: text.replace(/^TITLE:.*$/m, "").trim(),
+    details: "",
   };
 }
 
@@ -164,7 +183,7 @@ async function runAgent(input: string, resume?: string) {
 
   const reported = new Set(dirtyFiles());
   let typechecked = false;
-  let result = "";
+  let final: Final = { title: null, summary: "", details: "" };
   let sessionId = resume ?? "";
   const q = query({
     prompt: input,
@@ -176,6 +195,7 @@ async function runAgent(input: string, resume?: string) {
       permissionMode: "bypassPermissions",
       allowDangerouslySkipPermissions: true,
       settingSources: ["project"], // loads CLAUDE.md
+      outputFormat: { type: "json_schema", schema: RESULT_SCHEMA },
       systemPrompt: { type: "preset", preset: "claude_code", append: RULES },
       env: {
         ...env,
@@ -211,21 +231,22 @@ async function runAgent(input: string, resume?: string) {
         }
       }
     }
-    // Tool results are back: report any file that's newly changed, however it was edited.
+    // Tool results are back: log newly changed files (the card lists files at the end).
     if (msg.type === "user") {
       for (const f of dirtyFiles())
         if (!reported.has(f)) {
           reported.add(f);
-          await step(`Edited ${f}`);
+          console.log("[edited]", f);
         }
     }
     if (msg.type === "result") {
       sessionId = msg.session_id;
-      if (msg.subtype === "success") result = msg.result;
+      if (msg.subtype === "success")
+        final = parseFinal(msg.structured_output, msg.result);
       else throw new Error(`The agent stopped early (${msg.subtype}).`);
     }
   }
-  return { result, sessionId };
+  return { final, sessionId };
 }
 
 // --- Checks and merge decision ---------------------------------------------------------
@@ -312,7 +333,7 @@ async function main() {
   const resume =
     env.SANDBOX_FRESH === "0" ? (brief.resumeSessionId ?? undefined) : undefined;
   await step(resume ? "Picking up where I left off" : "Reading the code");
-  let { result, sessionId } = await runAgent(prompt(), resume).catch((err) => {
+  let { final, sessionId } = await runAgent(prompt(), resume).catch((err) => {
     if (!resume) throw err;
     console.error("resume failed; starting a new session", err);
     return runAgent(prompt());
@@ -325,7 +346,7 @@ async function main() {
       .filter(Boolean);
   let files = changed();
   if (files.length === 0) {
-    const { summary } = parseFinal(result);
+    const { summary } = final;
     await report({ patch: { status: "answered", summary } });
     return;
   }
@@ -334,15 +355,15 @@ async function main() {
   let check = checks();
   for (let attempt = 0; !check.ok && attempt < 2; attempt++) {
     await step("Fixing typecheck and lint errors");
-    ({ result, sessionId } = await runAgent(
-      `The harness's checks failed:\n\n${check.output}\n\nFix these, run the checks again, and end with the same TITLE format as before.`,
+    ({ final, sessionId } = await runAgent(
+      `The harness's checks failed:\n\n${check.output}\n\nFix these, run the checks again, and return the structured result again, covering the whole change.`,
       sessionId,
     ));
     await step("Running the typecheck and linter again");
     check = checks();
   }
   files = changed();
-  const { title, summary } = parseFinal(result);
+  const { title, summary, details } = final;
   const commitTitle = title ?? brief.request.slice(0, 60);
   const touchesConvex = files.some((f) => f.startsWith("convex/"));
 
@@ -367,13 +388,13 @@ async function main() {
   let prNumber = brief.prNumber;
   let prUrl = prNumber ? `https://github.com/${REPO}/pull/${prNumber}` : "";
   if (prNumber) {
-    await comment(GITHUB_TOKEN, prNumber, `Follow-up from ${brief.requester} ([thread](${brief.threadUrl})):\n\n> ${brief.request.replace(/\n/g, "\n> ")}\n\n${summary}`);
+    await comment(GITHUB_TOKEN, prNumber, `Follow-up from ${brief.requester} ([thread](${brief.threadUrl})):\n\n> ${brief.request.replace(/\n/g, "\n> ")}\n\n${summary}${details ? `\n\n${details}` : ""}`);
   } else {
     await step("Opening a pull request");
     const pr = await createPr(GITHUB_TOKEN, {
       branch,
       title: commitTitle,
-      body: `Asked by ${brief.requester} in #${brief.channel} ([thread](${brief.threadUrl})):\n\n> ${brief.request.replace(/\n/g, "\n> ")}\n\n${summary}\n\nChecks: ${check.ok ? "typecheck and lint pass" : "**typecheck or lint failed**"}.${touchesConvex ? "\n\nChanges `convex/`: deploy the backend after merging." : ""}\n\nOpened by @Claude from Just Write chat.`,
+      body: `Asked by ${brief.requester} in #${brief.channel} ([thread](${brief.threadUrl})):\n\n> ${brief.request.replace(/\n/g, "\n> ")}\n\n${summary}${details ? `\n\n${details}` : ""}\n\nChecks: ${check.ok ? "typecheck and lint pass" : "**typecheck or lint failed**"}.${touchesConvex ? "\n\nChanges `convex/`: the production build deploys it on merge." : ""}\n\nOpened by @Claude from Just Write chat.`,
     });
     prNumber = pr.number;
     prUrl = pr.html_url;

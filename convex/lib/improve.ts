@@ -6,9 +6,10 @@
 // classify: a second model call decides per change (small and low-risk → merge; else PR).
 export const MERGE_POLICY: "review" | "automerge" | "classify" = "review";
 
-// Set to true once .github/workflows/convex.yml is switched on (CONVEX_DEPLOY_KEY secret and
-// CONVEX_AUTODEPLOY repo variable), so merged changes under convex/ deploy themselves. Until then, those changes always wait for review.
-export const CONVEX_AUTODEPLOY = false;
+// Production builds on Vercel push convex/ before building the site (buildCommand in
+// vercel.json, using the CONVEX_DEPLOY_KEY env var), so merged backend changes deploy themselves.
+// Set to false to make every change under convex/ wait for review.
+export const CONVEX_AUTODEPLOY = true;
 
 export const REPO = "manifund/just-write";
 export const SANDBOX_ROOT = "/vercel/just-write"; // where Vercel Sandbox clones the repo

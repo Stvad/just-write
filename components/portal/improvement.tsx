@@ -7,7 +7,6 @@ import {
   revertImprovement,
 } from "@/app/improvements/actions";
 import type { ImprovementCard as Card } from "@/convex/improvements";
-import { CONVEX_AUTODEPLOY } from "@/convex/lib/improve";
 import { useNow } from "./util";
 
 function duration(ms: number) {
@@ -184,14 +183,12 @@ function Outcome({ card, isAdmin }: { card: Card; isAdmin: boolean }) {
           {actions}
         </div>
       )}
-      {isAdmin &&
-        card.status === "pr" &&
-        card.touchesConvex &&
-        !CONVEX_AUTODEPLOY && (
-          <p className="text-[14px] text-ink-muted">
-            This changes convex/. Run <code>bun convex</code> after merging.
-          </p>
-        )}
+      {card.status === "pr" && card.touchesConvex && card.previewUrl && (
+        <p className="text-[14px] text-ink-muted">
+          Some of this change only works once it’s merged, so the preview may not
+          show all of it.
+        </p>
+      )}
       {error && (
         <p role="alert" className="text-[14px] text-brass-text">
           {error}

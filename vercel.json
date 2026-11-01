@@ -1,9 +1,17 @@
 {
-  "regions": ["pdx1"],
+  "regions": [
+    "pdx1"
+  ],
+  "buildCommand": "if [ \"$VERCEL_ENV\" = production ]; then bunx convex dev --once; fi && bun run build",
   "redirects": [
     {
       "source": "/:path*",
-      "has": [{ "type": "host", "value": "www.justwrite.club" }],
+      "has": [
+        {
+          "type": "host",
+          "value": "www.justwrite.club"
+        }
+      ],
       "destination": "https://justwrite.club/:path*",
       "permanent": true
     }
