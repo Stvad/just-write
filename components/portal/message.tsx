@@ -2,13 +2,14 @@
 
 import { useMutation } from "convex/react";
 import Link from "next/link";
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { api } from "@/convex/_generated/api";
 import type { ChatMessage } from "@/convex/chat";
 import type { Id } from "@/convex/_generated/dataModel";
 import { REACTIONS } from "@/convex/lib/reactions";
 import { Avatar } from "./avatar";
 import { Composer } from "./composer";
+import { EmojiPicker } from "./emoji-picker";
 import { useMember, usePortal } from "./context";
 import { ImprovementCard } from "./improvement";
 import { RichText } from "./rich-text";
@@ -37,6 +38,7 @@ export function Message({
   const [editing, setEditing] = useState(false);
   const [picker, setPicker] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const closePicker = useCallback(() => setPicker(false), []);
   const mine = m.authorId === me._id;
   // Sent but not yet saved (an optimistic update); it has no real id to act on yet.
   const pending = m._id.startsWith(PENDING);
@@ -182,26 +184,6 @@ export function Message({
                 Cancel
               </button>
             </span>
-          ) : picker ? (
-            <span
-              className="flex items-center"
-              onMouseLeave={() => setPicker(false)}
-            >
-              {REACTIONS.map((e) => (
-                <button
-                  key={e}
-                  type="button"
-                  aria-label={`React ${e}`}
-                  className="cursor-pointer px-1.5 py-1 text-[19px] transition-transform hover:scale-125"
-                  onClick={() => {
-                    void toggle({ messageId: m._id, emoji: e });
-                    setPicker(false);
-                  }}
-                >
-                  {e}
-                </button>
-              ))}
-            </span>
           ) : (
             <>
               {REACTIONS.slice(0, 3).map((e) => (
@@ -215,24 +197,35 @@ export function Message({
                   {e}
                 </button>
               ))}
-              <ActionButton
-                label="More reactions"
-                onClick={() => setPicker(true)}
-              >
-                <svg
-                  aria-hidden="true"
-                  width="17"
-                  height="17"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.8"
-                  strokeLinecap="round"
+              <span data-emoji-toggle className="contents">
+                <ActionButton
+                  label="More reactions"
+                  onClick={() => setPicker((p) => !p)}
                 >
-                  <circle cx="12" cy="12" r="9" />
-                  <path d="M8.5 14.5s1.3 1.8 3.5 1.8 3.5-1.8 3.5-1.8M9 9.5h.01M15 9.5h.01" />
-                </svg>
-              </ActionButton>
+                  <svg
+                    aria-hidden="true"
+                    width="17"
+                    height="17"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.8"
+                    strokeLinecap="round"
+                  >
+                    <circle cx="12" cy="12" r="9" />
+                    <path d="M8.5 14.5s1.3 1.8 3.5 1.8 3.5-1.8 3.5-1.8M9 9.5h.01M15 9.5h.01" />
+                  </svg>
+                </ActionButton>
+              </span>
+              {picker && (
+                <EmojiPicker
+                  onPick={(e) => {
+                    void toggle({ messageId: m._id, emoji: e });
+                    setPicker(false);
+                  }}
+                  onClose={closePicker}
+                />
+              )}
               {!inThread && onOpenThread && (
                 <ActionButton
                   label="Reply in thread"

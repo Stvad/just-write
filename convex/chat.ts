@@ -9,7 +9,7 @@ import {
   type QueryCtx,
 } from "./_generated/server";
 import { DEFAULT_CHANNELS, PAGE_SIZE } from "./lib/channels";
-import { REACTIONS } from "./lib/reactions";
+import { isReaction } from "./lib/reactions";
 import { cardOf, ensureClaude, getClaude, startFromMessage } from "./improvements";
 import { cleanBody, mentionIds, type RichNode } from "./lib/richtext";
 import { requireAdmin, requireMember } from "./lib/viewer";
@@ -309,7 +309,7 @@ export const toggleReaction = mutation({
   args: { messageId: v.id("messages"), emoji: v.string() },
   handler: async (ctx, { messageId, emoji }) => {
     const { member } = await requireMember(ctx);
-    if (!REACTIONS.includes(emoji)) throw new ConvexError("Unknown reaction.");
+    if (!isReaction(emoji)) throw new ConvexError("Unknown reaction.");
     if (!(await ctx.db.get(messageId)))
       throw new ConvexError("That message is gone.");
     const existing = await ctx.db
