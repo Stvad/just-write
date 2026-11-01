@@ -2,12 +2,18 @@
 
 import { useMutation, useQuery } from "convex/react";
 import Link from "next/link";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Avatar } from "@/components/portal/avatar";
 import { usePortal } from "@/components/portal/context";
 import { api } from "@/convex/_generated/api";
 import { authClient } from "@/lib/auth-client";
 import { errorMessage } from "@/lib/convex";
+import {
+  deviceSubscription,
+  pushSupport,
+  subscribeDevice,
+  unsubscribeDevice,
+} from "@/lib/push";
 
 const input =
   "min-h-[46px] w-full rounded-none border border-ink/28 bg-cream px-3.5 py-2.5 font-body text-[18px] text-inherit";
@@ -161,15 +167,155 @@ function Reminders() {
   );
 }
 
+const LEVELS = [
+  { value: "mentions", label: "Mentions and threads you’re in" },
+  { value: "all", label: "All new messages" },
+] as const;
+
+function Notifications() {
+  const { me } = usePortal();
+  const publicKey = useQuery(api.push.publicKey);
+  const save = useMutation(api.push.subscribe);
+  const remove = useMutation(api.push.unsubscribe);
+  const setLevel = useMutation(api.push.setLevel);
+  const [support] = useState(pushSupport);
+  const [on, setOn] = useState<boolean | null>(null); // null until we've checked
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (support !== "supported") return;
+    void deviceSubscription().then((sub) => {
+      setOn(!!sub);
+      // Saved again in case the server dropped it or another account used this browser.
+      if (sub) void save(sub).catch(() => {});
+    });
+  }, [support, save]);
+
+  async function toggle() {
+    setBusy(true);
+    setError(null);
+    try {
+      if (on) {
+        const endpoint = await unsubscribeDevice();
+        if (endpoint) await remove({ endpoint });
+        setOn(false);
+      } else {
+        const sub = await subscribeDevice(publicKey!);
+        if (!sub) {
+          if (Notification.permission === "denied")
+            setError(
+              "Notifications are blocked for this site. Allow them in your browser’s site settings, then try again.",
+            );
+          return;
+        }
+        await save(sub);
+        setOn(true);
+      }
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  let content;
+  if (publicKey === undefined || (support === "supported" && on === null))
+    content = null;
+  else if (publicKey === null)
+    content = (
+      <p className="text-ink-muted">Notifications aren’t set up yet.</p>
+    );
+  else if (support === "install-first")
+    content = (
+      <p className="text-ink-muted">
+        On iPhone and iPad, add Just Write to your Home Screen first: tap Share,
+        then Add to Home Screen. Open it from there and turn notifications on
+        here.
+      </p>
+    );
+  else if (support === "unsupported")
+    content = (
+      <p className="text-ink-muted">
+        This browser doesn’t support notifications.
+      </p>
+    );
+  else
+    content = (
+      <>
+        <p className="text-ink-muted">
+          {on
+            ? "On for this device."
+            : "Get a notification on this device when someone messages you."}
+        </p>
+        <div>
+          <button
+            type="button"
+            onClick={toggle}
+            disabled={busy}
+            className="min-h-[44px] cursor-pointer border border-ink/28 px-5 text-[16px] transition-colors hover:bg-ink/5 disabled:opacity-60"
+          >
+            {on ? "Turn off on this device" : "Turn on for this device"}
+          </button>
+        </div>
+        {error && (
+          <p role="alert" className="text-[16px] text-brass-text">
+            {error}
+          </p>
+        )}
+        <fieldset className="flex flex-col gap-2">
+          <legend className={`${label} pb-2`}>Notify me about</legend>
+          {LEVELS.map((l) => (
+            <label
+              key={l.value}
+              className="flex items-center gap-2.5 text-[17px]"
+            >
+              <input
+                type="radio"
+                name="notify"
+                value={l.value}
+                checked={me.notify === l.value}
+                onChange={() => void setLevel({ notify: l.value })}
+                className="size-4 accent-ink"
+              />
+              {l.label}
+            </label>
+          ))}
+          <span className="text-[14px] text-ink-muted">
+            Applies to all your devices. Nothing is sent for a channel you have
+            open.
+          </span>
+        </fieldset>
+      </>
+    );
+
+  return (
+    <section className="flex flex-col gap-3 border-t border-ink/15 pt-6">
+      <h2 className="font-display text-[26px] leading-none font-[400]">
+        Notifications
+      </h2>
+      {content}
+    </section>
+  );
+}
+
 export function Settings() {
   const { me } = usePortal();
   const save = useMutation(api.members.updateProfile);
+  const forgetDevice = useMutation(api.push.unsubscribe);
   const [name, setName] = useState(me.name);
   const [handle, setHandle] = useState(me.handle ?? "");
   const [link, setLink] = useState(me.link ?? "");
   const [bio, setBio] = useState(me.bio ?? "");
   const [state, setState] = useState<"idle" | "saving" | "saved">("idle");
   const [error, setError] = useState<string | null>(null);
+
+  async function signOut() {
+    // This browser shouldn't keep getting this account's notifications.
+    const endpoint = await unsubscribeDevice().catch(() => null);
+    if (endpoint) await forgetDevice({ endpoint }).catch(() => {});
+    await authClient.signOut();
+  }
 
   return (
     <main className="mx-auto flex max-w-[44rem] flex-col gap-8 px-[clamp(20px,4vw,56px)] py-[clamp(24px,5vh,56px)]">
@@ -280,13 +426,12 @@ export function Settings() {
       </form>
 
       <Reminders />
+      <Notifications />
 
       <div className="border-t border-ink/15 pt-6">
         <button
           type="button"
-          onClick={() =>
-            authClient.signOut().then(() => window.location.assign("/"))
-          }
+          onClick={() => signOut().then(() => window.location.assign("/"))}
           className="min-h-[44px] cursor-pointer border border-ink/28 px-5 text-[16px] transition-colors hover:bg-ink/5"
         >
           Sign out

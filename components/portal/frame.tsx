@@ -12,6 +12,7 @@ import {
 } from "react";
 import { api } from "@/convex/_generated/api";
 import { authClient } from "@/lib/auth-client";
+import { setAppBadge } from "@/lib/push";
 import { Avatar } from "./avatar";
 import { PortalProvider, usePortal } from "./context";
 import { useRoom } from "./presence";
@@ -32,8 +33,9 @@ export function PortalFrame({
   useEffect(() => {
     if (membersOnly && !isLoading && !isAuthenticated) {
       // Read the path here rather than with usePathname, which would block prerendering public pages.
+      // Keep the query too: shared links and thread links live there.
       router.replace(
-        `/sign-in?next=${encodeURIComponent(window.location.pathname)}`,
+        `/sign-in?next=${encodeURIComponent(window.location.pathname + window.location.search)}`,
       );
     }
   }, [membersOnly, isLoading, isAuthenticated, router]);
@@ -298,6 +300,10 @@ function Sidebar() {
     [slugs],
   );
   useQueries(warm);
+  const unread = channels?.filter((c) => c.unread).length;
+  useEffect(() => {
+    if (unread !== undefined) setAppBadge(unread);
+  }, [unread]);
 
   const active = (href: string) =>
     pathname === href || pathname.startsWith(`${href}/`);

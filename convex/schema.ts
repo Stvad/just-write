@@ -34,6 +34,8 @@ export default defineSchema({
     bio: v.optional(v.string()),
     image: v.optional(v.string()),
     imageStorageId: v.optional(v.id("_storage")), // set when the image was uploaded here, not from Google
+    // Which chat messages send a push notification; unset means "mentions".
+    notify: v.optional(v.union(v.literal("mentions"), v.literal("all"))),
     // Commitment
     signedName: v.optional(v.string()),
     signedAt: v.optional(v.number()),
@@ -223,6 +225,14 @@ export default defineSchema({
   })
     .index("by_token", ["token"])
     .index("by_expires", ["expiresAt"]),
+
+  // Browsers and installed apps that get push notifications (see convex/push.ts).
+  pushSubscriptions: defineTable({
+    memberId: v.id("members"),
+    endpoint: v.string(),
+    p256dh: v.string(),
+    auth: v.string(),
+  }).index("by_endpoint", ["endpoint"]),
 
   // LLM-picked "similar writers", cached per member.
   similar: defineTable({

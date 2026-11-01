@@ -63,14 +63,18 @@ export const markCommitted = mutation({
         .query("channels")
         .withIndex("by_slug", (q) => q.eq("slug", "general"))
         .unique();
-      if (general)
-        await ctx.db.insert("messages", {
+      if (general) {
+        const messageId = await ctx.db.insert("messages", {
           channelId: general._id,
           authorId: member._id,
           body: JSON.stringify(emptyDoc),
           text: "joined Just Write",
           kind: "joined",
         });
+        await ctx.scheduler.runAfter(0, internal.pushAction.notify, {
+          messageId,
+        });
+      }
     }
     // Share the Google calendar with them (a no-op once it's shared).
     await ctx.scheduler.runAfter(0, internal.gcal.shareWith, {

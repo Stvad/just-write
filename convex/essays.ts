@@ -1,4 +1,5 @@
 import { ConvexError, v } from "convex/values";
+import { internal } from "./_generated/api";
 import { action, mutation, query } from "./_generated/server";
 import { emptyDoc } from "./lib/richtext";
 import { fillSlots } from "./lib/program";
@@ -104,12 +105,15 @@ export const submit = mutation({
       .withIndex("by_slug", (q) => q.eq("slug", "published"))
       .unique();
     if (channel) {
-      await ctx.db.insert("messages", {
+      const messageId = await ctx.db.insert("messages", {
         channelId: channel._id,
         authorId: member._id,
         body: JSON.stringify(emptyDoc),
         text: `published “${title}”`,
         essayId,
+      });
+      await ctx.scheduler.runAfter(0, internal.pushAction.notify, {
+        messageId,
       });
     }
     return essayId;

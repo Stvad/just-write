@@ -34,3 +34,7 @@ export const PAGE_SIZE = 50;
 export const CHECK_IN_SLUG = "check-ins";
 export const CHECK_IN_WINDOW_MS = 24 * 60 * 60 * 1000;
 export const CHECK_IN_PREVIEW_CHARS = 100;
+
+// Push notifications for a channel share this tag, so a new one replaces the last,
+// and opening the channel clears them.
+export const notificationTag = (slug: string) => `chat:${slug}`;

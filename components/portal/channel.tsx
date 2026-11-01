@@ -18,9 +18,10 @@ import {
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import type { ChatMessage } from "@/convex/chat";
-import { CHECK_IN_SLUG, PAGE_SIZE } from "@/convex/lib/channels";
+import { CHECK_IN_SLUG, notificationTag, PAGE_SIZE } from "@/convex/lib/channels";
 import { cleanBody, mentionIds } from "@/convex/lib/richtext";
 import { errorMessage } from "@/lib/convex";
+import { closeNotifications } from "@/lib/push";
 import { Avatar } from "./avatar";
 import { Composer } from "./composer";
 import { usePortal } from "./context";
@@ -174,6 +175,7 @@ export function Channel({
   );
   const onCloseThread = useCallback(() => closeThread(slug), [slug]);
   const here = useRoom(`channel:${slug}`);
+
 
   if (channel === undefined) return <div className="h-full" aria-busy="true" />;
   if (channel === null) {
@@ -346,8 +348,10 @@ function MessageList({
   }, [results]);
 
   useEffect(() => {
-    if (newest && document.visibilityState === "visible")
+    if (newest && document.visibilityState === "visible") {
       void markRead({ slug });
+      void closeNotifications(notificationTag(slug));
+    }
   }, [newest, slug, markRead]);
 
   function onScroll() {

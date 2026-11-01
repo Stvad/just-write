@@ -7,7 +7,11 @@ import type { Id } from "@/convex/_generated/dataModel";
 import type { PublicMember } from "@/convex/lib/viewer";
 
 type Viewer = NonNullable<typeof api.members.viewer._returnType>;
-type Me = PublicMember & { status: string; email: string };
+type Me = PublicMember & {
+  status: string;
+  email: string;
+  notify: "mentions" | "all";
+};
 
 type Portal = {
   viewer: Viewer;
