@@ -40,7 +40,8 @@ export const notify = internalAction({
                 keys: { p256dh: s.p256dh, auth: s.auth },
               },
               JSON.stringify({ ...data.notification, badge }),
-              { vapidDetails, TTL: 60 * 60 * 24 },
+              // A stalled push service shouldn't hold the action open.
+              { vapidDetails, TTL: 60 * 60 * 24, timeout: 10_000 },
             );
           } catch (err) {
             // 404/410: the browser unsubscribed or the subscription expired.

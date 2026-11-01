@@ -1,11 +1,11 @@
 // Functions called by trusted Next.js server code (Stripe webhook, email, data import).
 // They're public Convex functions guarded by CONVEX_SERVER_SECRET, which only the server knows.
 import { v } from "convex/values";
-import { internal } from "./_generated/api";
 import type { Doc } from "./_generated/dataModel";
 import { mutation, type MutationCtx } from "./_generated/server";
 import { improvementStatus, status } from "./schema";
 import { mention, paragraph, postAsClaude, txt } from "./improvements";
+import { postMessage } from "./lib/messages";
 import { emptyDoc } from "./lib/richtext";
 import { checkServerSecret } from "./lib/viewer";
 
@@ -63,18 +63,14 @@ export const markCommitted = mutation({
         .query("channels")
         .withIndex("by_slug", (q) => q.eq("slug", "general"))
         .unique();
-      if (general) {
-        const messageId = await ctx.db.insert("messages", {
+      if (general)
+        await postMessage(ctx, {
           channelId: general._id,
           authorId: member._id,
           body: JSON.stringify(emptyDoc),
           text: "joined Just Write",
           kind: "joined",
         });
-        await ctx.scheduler.runAfter(0, internal.pushAction.notify, {
-          messageId,
-        });
-      }
     }
     // Share the Google calendar with them (a no-op once it's shared).
     await ctx.scheduler.runAfter(0, internal.gcal.shareWith, {

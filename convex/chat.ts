@@ -1,6 +1,5 @@
 import { paginationOptsValidator } from "convex/server";
 import { ConvexError, v } from "convex/values";
-import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import {
   internalMutation,
@@ -16,6 +15,7 @@ import {
   DEFAULT_CHANNELS,
   PAGE_SIZE,
 } from "./lib/channels";
+import { postMessage } from "./lib/messages";
 import { isReaction } from "./lib/reactions";
 import { cardOf, ensureClaude, getClaude, startFromMessage } from "./improvements";
 import {
@@ -329,15 +329,17 @@ export const recent = query({
 });
 
 // A thread: the parent message and its replies, oldest first.
+// Takes a plain string because it can come from a ?thread= link; a bad id reads as deleted.
 export const thread = query({
-  args: { parentId: v.id("messages") },
-  handler: async (ctx, { parentId }) => {
+  args: { parentId: v.string() },
+  handler: async (ctx, args) => {
     const { member } = await requireMember(ctx);
-    const parent = await ctx.db.get(parentId);
+    const parentId = ctx.db.normalizeId("messages", args.parentId);
+    const parent = parentId && (await ctx.db.get(parentId));
     if (!parent) return null;
     const replies = await ctx.db
       .query("messages")
-      .withIndex("by_parent", (q) => q.eq("parentId", parentId))
+      .withIndex("by_parent", (q) => q.eq("parentId", parent._id))
       .collect();
     const c = await ctx.db.get(parent.channelId);
     const gate = c ? await checkInGate(ctx, c, member) : null;
@@ -442,7 +444,7 @@ export const send = mutation({
       });
     }
 
-    const id = await ctx.db.insert("messages", {
+    const id = await postMessage(ctx, {
       channelId: c._id,
       authorId: member._id,
       body,
@@ -450,9 +452,6 @@ export const send = mutation({
       parentId: args.parentId,
     });
     await clearTyping(ctx, member._id, c._id);
-    await ctx.scheduler.runAfter(0, internal.pushAction.notify, {
-      messageId: id,
-    });
 
     const claude = await getClaude(ctx);
     if (claude && mentionIds(JSON.parse(body) as RichNode).includes(claude._id))

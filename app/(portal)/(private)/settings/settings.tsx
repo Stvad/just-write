@@ -6,7 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import { Avatar } from "@/components/portal/avatar";
 import { usePortal } from "@/components/portal/context";
 import { api } from "@/convex/_generated/api";
-import { authClient } from "@/lib/auth-client";
+import { signOut } from "@/lib/auth-client";
 import { errorMessage } from "@/lib/convex";
 import {
   deviceSubscription,
@@ -185,12 +185,11 @@ function Notifications() {
 
   useEffect(() => {
     if (support !== "supported") return;
-    void deviceSubscription().then((sub) => {
-      setOn(!!sub);
-      // Saved again in case the server dropped it or another account used this browser.
-      if (sub) void save(sub).catch(() => {});
-    });
-  }, [support, save]);
+    deviceSubscription().then(
+      (sub) => setOn(!!sub),
+      () => setOn(false),
+    );
+  }, [support]);
 
   async function toggle() {
     setBusy(true);
@@ -209,7 +208,13 @@ function Notifications() {
             );
           return;
         }
-        await save(sub);
+        try {
+          await save(sub);
+        } catch (err) {
+          // Don't leave the browser subscribed when the server has no record of it.
+          await unsubscribeDevice().catch(() => {});
+          throw err;
+        }
         setOn(true);
       }
     } catch (err) {
@@ -302,20 +307,12 @@ function Notifications() {
 export function Settings() {
   const { me } = usePortal();
   const save = useMutation(api.members.updateProfile);
-  const forgetDevice = useMutation(api.push.unsubscribe);
   const [name, setName] = useState(me.name);
   const [handle, setHandle] = useState(me.handle ?? "");
   const [link, setLink] = useState(me.link ?? "");
   const [bio, setBio] = useState(me.bio ?? "");
   const [state, setState] = useState<"idle" | "saving" | "saved">("idle");
   const [error, setError] = useState<string | null>(null);
-
-  async function signOut() {
-    // This browser shouldn't keep getting this account's notifications.
-    const endpoint = await unsubscribeDevice().catch(() => null);
-    if (endpoint) await forgetDevice({ endpoint }).catch(() => {});
-    await authClient.signOut();
-  }
 
   return (
     <main className="mx-auto flex max-w-[44rem] flex-col gap-8 px-[clamp(20px,4vw,56px)] py-[clamp(24px,5vh,56px)]">

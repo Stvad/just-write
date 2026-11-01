@@ -177,6 +177,7 @@ export function Channel({
   const here = useRoom(`channel:${slug}`);
 
 
+
   if (channel === undefined) return <div className="h-full" aria-busy="true" />;
   if (channel === null) {
     return (
@@ -347,11 +348,17 @@ function MessageList({
     }
   }, [results]);
 
+  // Mark read when a message arrives while you're looking, or when you come back to the tab.
   useEffect(() => {
-    if (newest && document.visibilityState === "visible") {
+    if (!newest) return;
+    const read = () => {
+      if (document.visibilityState !== "visible") return;
       void markRead({ slug });
       void closeNotifications(notificationTag(slug));
-    }
+    };
+    read();
+    document.addEventListener("visibilitychange", read);
+    return () => document.removeEventListener("visibilitychange", read);
   }, [newest, slug, markRead]);
 
   function onScroll() {
@@ -542,6 +549,10 @@ function Thread({
   useEffect(() => {
     end.current?.scrollIntoView({ block: "end" });
   }, [count]);
+
+  useEffect(() => {
+    void closeNotifications(notificationTag(slug, parentId));
+  }, [slug, parentId]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) =>

@@ -22,8 +22,8 @@ export const publicKey = query({
   handler: async () => process.env.VAPID_PUBLIC_KEY ?? null,
 });
 
-// Saves this browser's subscription for the viewer. /settings calls it again on every
-// visit, so a browser that someone else signs in on moves to their account.
+// Saves this browser's subscription for the viewer. The portal calls it again on every
+// visit (PortalFrame), so a browser that someone else signs in on moves to their account.
 export const subscribe = mutation({
   args: { endpoint: v.string(), p256dh: v.string(), auth: v.string() },
   handler: async (ctx, args) => {
@@ -31,10 +31,23 @@ export const subscribe = mutation({
     const endpoint = pushEndpoint(args.endpoint);
     if (!endpoint)
       throw new ConvexError("This browser’s push service isn’t supported.");
+    // base64url keys: a 65-byte P-256 public key and a 16-byte secret.
+    if (
+      !/^[\w-]{87}=?$/.test(args.p256dh) ||
+      !/^[\w-]{22}(==)?$/.test(args.auth)
+    )
+      throw new ConvexError("That push subscription doesn’t look right.");
     const row = { ...args, endpoint, memberId: member._id };
     const existing = await bySubscription(ctx, endpoint);
-    if (existing) await ctx.db.patch(existing._id, row);
-    else await ctx.db.insert("pushSubscriptions", row);
+    if (
+      existing?.memberId === row.memberId &&
+      existing.p256dh === row.p256dh &&
+      existing.auth === row.auth
+    )
+      return; // the portal re-saves on every visit; usually nothing changed
+    // Re-inserted rather than patched, so the cap below drops the devices that changed longest ago.
+    if (existing) await ctx.db.delete(existing._id);
+    await ctx.db.insert("pushSubscriptions", row);
     // Keep the newest few, so stale devices don't pile up (oldest first by index order).
     const mine = await ctx.db
       .query("pushSubscriptions")
@@ -127,15 +140,22 @@ export const recipients = internalQuery({
     const body = m.essayId || m.kind ? `${author.name} ${m.text}` : m.text;
     return {
       notification: {
-        title: `${author.name} ${m.parentId ? "replied in" : "in"} #${channel.name}`,
-        body: body.length > 300 ? `${body.slice(0, 299)}…` : body,
+        title: clip(
+          `${author.name} ${m.parentId ? "replied in" : "in"} #${channel.name}`,
+          120,
+        ),
+        body: clip(body, 300),
         url: `/chat/${channel.slug}${m.parentId ? `?thread=${m.parentId}` : ""}`,
-        tag: notificationTag(channel.slug),
+        tag: notificationTag(channel.slug, m.parentId),
       },
       recipients,
     };
   },
 });
+
+// Keeps notifications well under the ~4KB push payload limit.
+const clip = (s: string, n: number) =>
+  s.length > n ? `${s.slice(0, n - 1)}…` : s;
 
 // Drops subscriptions the push service says are gone.
 export const forget = internalMutation({
