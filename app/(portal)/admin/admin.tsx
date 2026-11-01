@@ -22,52 +22,88 @@ function address(r: { name?: string; email: string }) {
   return `${safe} <${r.email}>`;
 }
 
-function Recipients({ list }: { list: string }) {
-  const [copied, setCopied] = useState(false);
-  const [open, setOpen] = useState(false);
-  const [overflows, setOverflows] = useState(false);
-  const text = useRef<HTMLSpanElement>(null);
-  // Show "See more" only when the clamped list is cut off.
-  useEffect(() => {
-    const el = text.current;
-    if (!el) return;
-    const ro = new ResizeObserver(() =>
-      setOverflows(el.scrollHeight > el.clientHeight + 1),
-    );
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [list]);
+type Row = { name?: string; email: string; status: string };
+
+const GROUPS = [
+  { key: "all", label: "All", title: "Everyone on the list", match: () => true },
+  {
+    key: "committed",
+    label: "Committed",
+    title: "Paid the deposit",
+    match: (r: Row) => r.status === "committed",
+  },
+  {
+    key: "interested",
+    label: "Interested",
+    title: "Not yet committed (includes signed, unpaid)",
+    match: (r: Row) => r.status !== "committed",
+  },
+] as const;
+
+// Copy buttons for each audience. The list itself stays hidden unless asked for.
+function CopyEmails({ rows }: { rows: Row[] }) {
+  const [copied, setCopied] = useState<string | null>(null);
+  const [shown, setShown] = useState<string | null>(null);
+  const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  useEffect(() => () => clearTimeout(timer.current), []);
+
+  const lists = GROUPS.map((g) => {
+    const picked = rows.filter(g.match);
+    return { ...g, count: picked.length, text: picked.map(address).join(", ") };
+  });
+  const preview = lists.find((l) => l.key === shown);
+
   return (
-    <div className="flex items-start gap-3 text-[15px]">
-      <button
-        type="button"
-        onClick={async () => {
-          await navigator.clipboard.writeText(list);
-          setCopied(true);
-          setTimeout(() => setCopied(false), 1500);
-        }}
-        className="shrink-0 cursor-pointer border border-ink/25 px-3 py-1"
-      >
-        {copied ? "Copied" : "Copy emails"}
-      </button>
-      <div className="flex flex-col items-start gap-1 pt-1">
-        <span
-          ref={text}
-          className={`block text-ink-muted select-all ${open ? "" : "line-clamp-3"}`}
-        >
-          {list}
+    <section className="flex flex-col gap-3 border border-ink/15 p-4 text-[15px]">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+        <span className="text-[13px] tracking-[0.12em] text-ink-muted uppercase">
+          Copy emails
         </span>
-        {(overflows || open) && (
-          <button
-            type="button"
-            onClick={() => setOpen(!open)}
-            className="cursor-pointer underline"
+        <div className="flex flex-wrap gap-2">
+          {lists.map((l) => (
+            <button
+              key={l.key}
+              type="button"
+              title={l.title}
+              disabled={l.count === 0}
+              onClick={async () => {
+                await navigator.clipboard.writeText(l.text);
+                setCopied(l.key);
+                clearTimeout(timer.current);
+                timer.current = setTimeout(() => setCopied(null), 1500);
+              }}
+              className={`min-w-[9.5rem] cursor-pointer border px-3 py-1 tabular-nums transition-colors disabled:cursor-default disabled:opacity-40 ${
+                copied === l.key
+                  ? "border-ink bg-ink text-cream"
+                  : "border-ink/25 hover:border-ink"
+              }`}
+            >
+              {copied === l.key ? `Copied ${l.count}` : `${l.label} (${l.count})`}
+            </button>
+          ))}
+        </div>
+        <label className="ml-auto flex items-center gap-2 text-ink-muted">
+          Preview
+          <select
+            value={shown ?? ""}
+            onChange={(e) => setShown(e.target.value || null)}
+            className="border border-ink/25 bg-cream px-2 py-1 text-ink"
           >
-            {open ? "See less" : "See more"}
-          </button>
-        )}
+            <option value="">Hidden</option>
+            {lists.map((l) => (
+              <option key={l.key} value={l.key}>
+                {l.label}
+              </option>
+            ))}
+          </select>
+        </label>
       </div>
-    </div>
+      {preview && (
+        <p className="max-h-48 overflow-y-auto break-words text-ink-muted select-all">
+          {preview.text || "No one yet."}
+        </p>
+      )}
+    </section>
   );
 }
 
@@ -93,6 +129,7 @@ function Overview() {
   return (
     <main className="flex flex-col gap-6 px-[clamp(20px,4vw,56px)] py-10">
       <h1 className="font-display text-[36px] font-[340]">Admin</h1>
+      <CopyEmails rows={rows} />
       <div className="flex flex-wrap items-center gap-2 text-[15px]">
         {(["all", "committed", "signed", "interested"] as const).map((f) => (
           <button
@@ -105,7 +142,6 @@ function Overview() {
           </button>
         ))}
       </div>
-      <Recipients list={shown.map(address).join(", ")} />
       <div className="overflow-x-auto">
         <table className="w-full border-collapse text-left text-[16px]">
           <thead className="text-[13px] tracking-[0.12em] text-ink-muted uppercase">
