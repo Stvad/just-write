@@ -232,7 +232,9 @@ export default defineSchema({
     endpoint: v.string(),
     p256dh: v.string(),
     auth: v.string(),
-  }).index("by_endpoint", ["endpoint"]),
+  })
+    .index("by_endpoint", ["endpoint"])
+    .index("by_member", ["memberId"]),
 
   // LLM-picked "similar writers", cached per member.
   similar: defineTable({
