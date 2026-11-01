@@ -12,9 +12,12 @@ const noop = () => () => {};
 function safeNext(raw: string | null) {
   if (!raw?.startsWith("/")) return "/home";
   try {
-    const url = new URL(raw, window.location.origin);
-    if (url.origin === window.location.origin)
-      return url.pathname + url.search + url.hash;
+    const { origin } = window.location;
+    const url = new URL(raw, origin);
+    const path = url.pathname + url.search + url.hash;
+    // Check the normalized path too: "/.//evil.com" normalizes to "//evil.com".
+    if (url.origin === origin && new URL(path, origin).origin === origin)
+      return path;
   } catch {}
   return "/home";
 }
