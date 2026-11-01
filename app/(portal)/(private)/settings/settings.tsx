@@ -224,75 +224,65 @@ function Notifications() {
     }
   }
 
-  let content;
-  if (publicKey === undefined || (support === "supported" && on === null))
-    content = null;
-  else if (publicKey === null)
-    content = (
-      <p className="text-ink-muted">Notifications aren’t set up yet.</p>
-    );
-  else if (support === "install-first")
-    content = (
+  const loading =
+    publicKey === undefined || (support === "supported" && on === null);
+  const notice =
+    publicKey === null
+      ? "Notifications aren’t set up yet."
+      : support === "install-first"
+        ? "On iPhone and iPad, add Just Write to your Home Screen first: tap Share, then Add to Home Screen. Open it from there and turn notifications on here."
+        : support === "unsupported"
+          ? "This browser doesn’t support notifications."
+          : null;
+  const content = loading ? null : notice ? (
+    <p className="text-ink-muted">{notice}</p>
+  ) : (
+    <>
       <p className="text-ink-muted">
-        On iPhone and iPad, add Just Write to your Home Screen first: tap Share,
-        then Add to Home Screen. Open it from there and turn notifications on
-        here.
+        {on
+          ? "On for this device."
+          : "Get a notification on this device when someone messages you."}
       </p>
-    );
-  else if (support === "unsupported")
-    content = (
-      <p className="text-ink-muted">
-        This browser doesn’t support notifications.
-      </p>
-    );
-  else
-    content = (
-      <>
-        <p className="text-ink-muted">
-          {on
-            ? "On for this device."
-            : "Get a notification on this device when someone messages you."}
+      <div>
+        <button
+          type="button"
+          onClick={toggle}
+          disabled={busy}
+          className="min-h-[44px] cursor-pointer border border-ink/28 px-5 text-[16px] transition-colors hover:bg-ink/5 disabled:opacity-60"
+        >
+          {on ? "Turn off on this device" : "Turn on for this device"}
+        </button>
+      </div>
+      {error && (
+        <p role="alert" className="text-[16px] text-brass-text">
+          {error}
         </p>
-        <div>
-          <button
-            type="button"
-            onClick={toggle}
-            disabled={busy}
-            className="min-h-[44px] cursor-pointer border border-ink/28 px-5 text-[16px] transition-colors hover:bg-ink/5 disabled:opacity-60"
+      )}
+      <fieldset className="flex flex-col gap-2">
+        <legend className={`${label} pb-2`}>Notify me about</legend>
+        {LEVELS.map((l) => (
+          <label
+            key={l.value}
+            className="flex items-center gap-2.5 text-[17px]"
           >
-            {on ? "Turn off on this device" : "Turn on for this device"}
-          </button>
-        </div>
-        {error && (
-          <p role="alert" className="text-[16px] text-brass-text">
-            {error}
-          </p>
-        )}
-        <fieldset className="flex flex-col gap-2">
-          <legend className={`${label} pb-2`}>Notify me about</legend>
-          {LEVELS.map((l) => (
-            <label
-              key={l.value}
-              className="flex items-center gap-2.5 text-[17px]"
-            >
-              <input
-                type="radio"
-                name="notify"
-                value={l.value}
-                checked={me.notify === l.value}
-                onChange={() => void setLevel({ notify: l.value })}
-                className="size-4 accent-ink"
-              />
-              {l.label}
-            </label>
-          ))}
-          <span className="text-[14px] text-ink-muted">
-            Applies to all your devices. Nothing is sent for a channel you have
-            open.
-          </span>
-        </fieldset>
-      </>
-    );
+            <input
+              type="radio"
+              name="notify"
+              value={l.value}
+              checked={me.notify === l.value}
+              onChange={() => void setLevel({ notify: l.value })}
+              className="size-4 accent-ink"
+            />
+            {l.label}
+          </label>
+        ))}
+        <span className="text-[14px] text-ink-muted">
+          Applies to all your devices. Nothing is sent for a channel you have
+          open.
+        </span>
+      </fieldset>
+    </>
+  );
 
   return (
     <section className="flex flex-col gap-3 border-t border-ink/15 pt-6">

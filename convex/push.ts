@@ -9,12 +9,13 @@ import {
   query,
   type MutationCtx,
 } from "./_generated/server";
-import { unreadCount } from "./chat";
-import { notificationTag } from "./lib/channels";
+import { unreadCounts } from "./chat";
+import { channelRoom, notificationTag } from "./lib/channels";
 import { pushEndpoint } from "./lib/pushEndpoint";
 import { mentionIds, type RichNode } from "./lib/richtext";
 import { canEnter, isAdminEmail, requireMember } from "./lib/viewer";
 import { presence } from "./presence";
+import { notifyLevel } from "./schema";
 
 // The key browsers subscribe with, or null if push isn't set up on this deployment.
 export const publicKey = query({
@@ -71,7 +72,7 @@ export const unsubscribe = mutation({
 });
 
 export const setLevel = mutation({
-  args: { notify: v.union(v.literal("mentions"), v.literal("all")) },
+  args: { notify: notifyLevel },
   handler: async (ctx, { notify }) => {
     const { member } = await requireMember(ctx);
     await ctx.db.patch(member._id, { notify });
@@ -108,7 +109,7 @@ export const recipients = internalQuery({
       for (const r of replies) direct.add(r.authorId);
     }
     const watching = new Set(
-      (await presence.listRoom(ctx, `channel:${channel.slug}`, true)).map(
+      (await presence.listRoom(ctx, channelRoom(channel.slug), true)).map(
         (p) => p.userId,
       ),
     );
@@ -117,24 +118,19 @@ export const recipients = internalQuery({
     for (const s of await ctx.db.query("pushSubscriptions").collect())
       byMember.set(s.memberId, [...(byMember.get(s.memberId) ?? []), s]);
 
-    const recipients = [];
+    const targets: [Id<"members">, Doc<"pushSubscriptions">[]][] = [];
     for (const [memberId, subs] of byMember) {
       if (memberId === m.authorId || watching.has(memberId)) continue;
       const member = await ctx.db.get(memberId);
       if (!member || !canEnter(member, isAdminEmail(member.email))) continue;
       const wants =
         direct.has(memberId) || (member.notify === "all" && !m.parentId);
-      if (!wants) continue;
-      recipients.push({
-        subscriptions: subs.map(({ _id, endpoint, p256dh, auth }) => ({
-          _id,
-          endpoint,
-          p256dh,
-          auth,
-        })),
-        badge: await unreadCount(ctx, memberId),
-      });
+      if (wants) targets.push([memberId, subs]);
     }
+    const badges = await unreadCounts(
+      ctx,
+      targets.map(([id]) => id),
+    );
 
     // Essay and "joined" posts read as a sentence after the author's name.
     const body = m.essayId || m.kind ? `${author.name} ${m.text}` : m.text;
@@ -148,7 +144,10 @@ export const recipients = internalQuery({
         url: `/chat/${channel.slug}${m.parentId ? `?thread=${m.parentId}` : ""}`,
         tag: notificationTag(channel.slug, m.parentId),
       },
-      recipients,
+      recipients: targets.map(([id, subscriptions]) => ({
+        subscriptions,
+        badge: badges.get(id) ?? 0,
+      })),
     };
   },
 });

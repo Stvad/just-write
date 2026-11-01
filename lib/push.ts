@@ -1,7 +1,7 @@
 // Browser side of push notifications. public/sw.js shows them; convex/push.ts stores
 // subscriptions and decides who gets what.
 
-export type PushSupport = "supported" | "install-first" | "unsupported";
+type PushSupport = "supported" | "install-first" | "unsupported";
 
 // iPhones and iPads only allow push in an app added to the Home Screen.
 export function pushSupport(): PushSupport {
@@ -18,7 +18,7 @@ export function pushSupport(): PushSupport {
   return ios ? "install-first" : "unsupported";
 }
 
-export type SubscriptionArgs = {
+type SubscriptionArgs = {
   endpoint: string;
   p256dh: string;
   auth: string;
@@ -29,10 +29,17 @@ function toArgs(sub: PushSubscription): SubscriptionArgs {
   return { endpoint: endpoint!, p256dh: keys!.p256dh, auth: keys!.auth };
 }
 
+async function registration() {
+  if (!("serviceWorker" in navigator)) return undefined;
+  return await navigator.serviceWorker.getRegistration("/");
+}
+
+async function currentSubscription() {
+  return (await (await registration())?.pushManager.getSubscription()) ?? null;
+}
+
 export async function deviceSubscription() {
-  if (!("serviceWorker" in navigator)) return null;
-  const reg = await navigator.serviceWorker.getRegistration("/");
-  const sub = await reg?.pushManager.getSubscription();
+  const sub = await currentSubscription();
   return sub ? toArgs(sub) : null;
 }
 
@@ -51,9 +58,7 @@ export async function subscribeDevice(publicKey: string) {
 
 // Unsubscribes this browser and returns the endpoint that was removed.
 export async function unsubscribeDevice() {
-  if (!("serviceWorker" in navigator)) return null;
-  const reg = await navigator.serviceWorker.getRegistration("/");
-  const sub = await reg?.pushManager.getSubscription();
+  const sub = await currentSubscription();
   if (!sub) return null;
   await sub.unsubscribe();
   return sub.endpoint;
@@ -61,8 +66,7 @@ export async function unsubscribeDevice() {
 
 // Clears notifications for a channel once it's been read here.
 export async function closeNotifications(tag: string) {
-  if (!("serviceWorker" in navigator)) return;
-  const reg = await navigator.serviceWorker.getRegistration("/");
+  const reg = await registration();
   for (const n of (await reg?.getNotifications({ tag })) ?? []) n.close();
 }
 

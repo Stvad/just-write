@@ -110,49 +110,66 @@ export const channels = query({
       (a, b) => a.order - b.order,
     );
     return await Promise.all(
-      rows.map(async (c) => ({
-        ...c,
-        ...(await readState(ctx, c._id, member._id)),
-        // #check-ins: whether the viewer still has to post before reading others' posts.
-        locked: !!(await checkInGate(ctx, c, member)),
-      })),
+      rows.map(async (c) => {
+        const latest = await latestPost(ctx, c._id);
+        const read = await ctx.db
+          .query("reads")
+          .withIndex("by_member_channel", (q) =>
+            q.eq("memberId", member._id).eq("channelId", c._id),
+          )
+          .unique();
+        return {
+          ...c,
+          unread: isUnread(latest, member._id, read?.lastReadAt),
+          lastMessageAt: latest?._creationTime ?? null,
+          // #check-ins: whether the viewer still has to post before reading others' posts.
+          locked: !!(await checkInGate(ctx, c, member)),
+        };
+      }),
     );
   },
 });
 
-// Whether a channel has a top-level message from someone else that the member hasn't seen.
-async function readState(
-  ctx: QueryCtx,
-  channelId: Id<"channels">,
-  memberId: Id<"members">,
-) {
-  const latest = await ctx.db
+async function latestPost(ctx: QueryCtx, channelId: Id<"channels">) {
+  return await ctx.db
     .query("messages")
     .withIndex("by_channel_parent", (q) =>
       q.eq("channelId", channelId).eq("parentId", undefined),
     )
     .order("desc")
     .first();
-  const read = await ctx.db
-    .query("reads")
-    .withIndex("by_member_channel", (q) =>
-      q.eq("memberId", memberId).eq("channelId", channelId),
-    )
-    .unique();
-  const unread =
-    !!latest &&
-    latest.authorId !== memberId &&
-    latest._creationTime > (read?.lastReadAt ?? 0);
-  return { unread, lastMessageAt: latest?._creationTime ?? null };
 }
 
-// How many channels have unread messages, for the app icon badge.
-export async function unreadCount(ctx: QueryCtx, memberId: Id<"members">) {
-  const channels = await ctx.db.query("channels").collect();
-  const states = await Promise.all(
-    channels.map((c) => readState(ctx, c._id, memberId)),
+// Whether a channel's newest top-level message is from someone else and newer than the member's last read.
+function isUnread(
+  latest: Doc<"messages"> | null,
+  memberId: Id<"members">,
+  lastReadAt = 0,
+) {
+  return (
+    !!latest &&
+    latest.authorId !== memberId &&
+    latest._creationTime > lastReadAt
   );
-  return states.filter((s) => s.unread).length;
+}
+
+// How many channels each member has unread, for the app icon badge.
+export async function unreadCounts(ctx: QueryCtx, memberIds: Id<"members">[]) {
+  const channels = await ctx.db.query("channels").collect();
+  const latest = await Promise.all(channels.map((c) => latestPost(ctx, c._id)));
+  const counts = await Promise.all(
+    memberIds.map(async (memberId) => {
+      const reads = await ctx.db
+        .query("reads")
+        .withIndex("by_member_channel", (q) => q.eq("memberId", memberId))
+        .collect();
+      const lastRead = new Map(reads.map((r) => [r.channelId, r.lastReadAt]));
+      return channels.filter((c, i) =>
+        isUnread(latest[i], memberId, lastRead.get(c._id)),
+      ).length;
+    }),
+  );
+  return new Map(memberIds.map((id, i) => [id, counts[i]]));
 }
 
 async function channelBySlug(ctx: QueryCtx, slug: string) {

@@ -18,7 +18,12 @@ import {
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import type { ChatMessage } from "@/convex/chat";
-import { CHECK_IN_SLUG, notificationTag, PAGE_SIZE } from "@/convex/lib/channels";
+import {
+  channelRoom,
+  CHECK_IN_SLUG,
+  notificationTag,
+  PAGE_SIZE,
+} from "@/convex/lib/channels";
 import { cleanBody, mentionIds } from "@/convex/lib/richtext";
 import { errorMessage } from "@/lib/convex";
 import { closeNotifications } from "@/lib/push";
@@ -174,7 +179,7 @@ export function Channel({
     [slug, threadId],
   );
   const onCloseThread = useCallback(() => closeThread(slug), [slug]);
-  const here = useRoom(`channel:${slug}`);
+  const here = useRoom(channelRoom(slug));
 
 
 
