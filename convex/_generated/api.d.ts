@@ -26,6 +26,7 @@ import type * as lib_util from "../lib/util.js";
 import type * as lib_viewer from "../lib/viewer.js";
 import type * as members from "../members.js";
 import type * as presence from "../presence.js";
+import type * as previewAccess from "../previewAccess.js";
 import type * as server from "../server.js";
 import type * as similar from "../similar.js";
 import type * as similarAction from "../similarAction.js";
@@ -55,6 +56,7 @@ declare const fullApi: ApiFromModules<{
   "lib/viewer": typeof lib_viewer;
   members: typeof members;
   presence: typeof presence;
+  previewAccess: typeof previewAccess;
   server: typeof server;
   similar: typeof similar;
   similarAction: typeof similarAction;

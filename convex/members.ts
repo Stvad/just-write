@@ -45,6 +45,7 @@ export const viewer = query({
         : null,
       isAdmin,
       canEnter: canEnter(member, isAdmin),
+      readonly: viewer.readonly,
     };
   },
 });
@@ -55,7 +56,7 @@ export const syncProfile = mutation({
   args: {},
   handler: async (ctx) => {
     const viewer = await getViewer(ctx);
-    if (!viewer) return null;
+    if (!viewer || viewer.readonly) return null;
     let member = viewer.member;
     if (!member) {
       if (!viewer.isAdmin) return null;
@@ -127,6 +128,8 @@ export const signTerms = mutation({
   handler: async (ctx, args) => {
     const viewer = await getViewer(ctx);
     if (!viewer) throw new ConvexError("Please sign in first.");
+    if (viewer.readonly)
+      throw new ConvexError("This is a read-only preview, so changes aren’t saved.");
     const signature = args.signature.trim().replace(/\s+/g, " ").slice(0, 200);
     if (!signature)
       throw new ConvexError("Please type your full name to sign.");

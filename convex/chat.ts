@@ -334,7 +334,8 @@ export const toggleReaction = mutation({
 export const markRead = mutation({
   args: { slug: v.string() },
   handler: async (ctx, { slug }) => {
-    const { member } = await requireMember(ctx);
+    // Allowed in read-only previews: it only records what this person has seen.
+    const { member } = await requireMember(ctx, { allowReadonly: true });
     const c = await channelBySlug(ctx, slug);
     const read = await ctx.db
       .query("reads")
@@ -358,7 +359,10 @@ export const markRead = mutation({
 export const setTyping = mutation({
   args: { slug: v.string(), parentId: v.optional(v.id("messages")) },
   handler: async (ctx, { slug, parentId }) => {
-    const { member } = await requireMember(ctx);
+    const { member, readonly } = await requireMember(ctx, {
+      allowReadonly: true,
+    });
+    if (readonly) return; // nothing they type gets sent, so don't show them typing
     const c = await channelBySlug(ctx, slug);
     const expiresAt = Date.now() + 6000;
     const existing = await ctx.db

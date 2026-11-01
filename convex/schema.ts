@@ -174,6 +174,15 @@ export default defineSchema({
     .index("by_thread", ["threadId"])
     .index("by_requester", ["requesterId"]),
 
+  // One-time links that sign someone into a preview deployment read-only (convex/previewAccess.ts).
+  previewTokens: defineTable({
+    token: v.string(),
+    userId: v.string(), // Better Auth user id
+    expiresAt: v.number(),
+  })
+    .index("by_token", ["token"])
+    .index("by_expires", ["expiresAt"]),
+
   // LLM-picked "similar writers", cached per member.
   similar: defineTable({
     memberId: v.id("members"),

@@ -15,7 +15,8 @@ export const heartbeat = mutation({
     interval: v.number(),
   },
   handler: async (ctx, { roomId, userId, sessionId, interval }) => {
-    const { member } = await requireMember(ctx);
+    // Read-only preview sessions still show up as online; it's the same person.
+    const { member } = await requireMember(ctx, { allowReadonly: true });
     if (userId !== member._id)
       throw new ConvexError("Presence is only for yourself.");
     return await presence.heartbeat(ctx, roomId, userId, sessionId, interval);

@@ -119,7 +119,8 @@ function Outcome({ card, isAdmin }: { card: Card; isAdmin: boolean }) {
   const links = (
     <>
       {card.status === "pr" && card.previewUrl && (
-        <ExternalLink href={card.previewUrl}>Preview</ExternalLink>
+        // Signs the member into the preview read-only (app/improvements/[id]/preview).
+        <ExternalLink href={`/improvements/${card._id}/preview`}>Preview</ExternalLink>
       )}
       {card.prUrl && (
         <ExternalLink href={card.prUrl}>PR #{card.prNumber}</ExternalLink>

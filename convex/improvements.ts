@@ -2,7 +2,7 @@
 // startFromMessage, which records a run, posts Claude's status card in the thread, and
 // asks the Next.js route /api/improve to start a Vercel Sandbox. The runner inside it
 // (scripts/improve-runner.ts) reports progress back through server.reportImprovement.
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import {
@@ -301,6 +301,9 @@ export const forAdmin = query({
   args: { id: v.id("improvements") },
   handler: async (ctx, { id }) => {
     const viewer = await requireAdmin(ctx);
+    // A query, but it gates the Merge/Close/Revert actions, so read-only sessions can't use it.
+    if (viewer.readonly)
+      throw new ConvexError("This is a read-only preview, so changes aren’t saved.");
     const r = await ctx.db.get(id);
     if (!r) return null;
     return {

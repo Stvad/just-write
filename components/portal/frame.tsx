@@ -149,7 +149,7 @@ function PublicFrame({
 }
 
 function Shell({ children }: { children: ReactNode }) {
-  const { me } = usePortal();
+  const { me, viewer } = usePortal();
   const sync = useMutation(api.members.syncProfile);
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
@@ -211,9 +211,29 @@ function Shell({ children }: { children: ReactNode }) {
             <Avatar member={me} size={30} />
           </Link>
         </div>
+        {viewer.readonly && <ReadonlyBanner />}
         <div className="min-h-0 flex-1 overflow-y-auto">{children}</div>
       </div>
     </div>
+  );
+}
+
+// Shown when a preview link signed someone in read-only (convex/previewAccess.ts).
+function ReadonlyBanner() {
+  return (
+    <p className="border-b border-ink/10 bg-brass/15 px-4 py-2 text-[15px]">
+      This is a read-only preview, so nothing you do here is saved.{" "}
+      <button
+        type="button"
+        className="cursor-pointer underline"
+        onClick={async () => {
+          await authClient.signOut();
+          window.location.assign("/sign-in?next=/home");
+        }}
+      >
+        Sign in to try it for real
+      </button>
+    </p>
   );
 }
 

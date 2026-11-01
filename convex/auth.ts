@@ -1,23 +1,98 @@
 import { createClient, type GenericCtx } from "@convex-dev/better-auth";
 import { convex } from "@convex-dev/better-auth/plugins";
+import type { BetterAuthPlugin } from "better-auth";
+import { createAuthEndpoint, createAuthMiddleware } from "better-auth/api";
+import { setSessionCookie } from "better-auth/cookies";
 import { betterAuth, type BetterAuthOptions } from "better-auth/minimal";
 import { magicLink } from "better-auth/plugins/magic-link";
-import { components } from "./_generated/api";
+import { oAuthProxy } from "better-auth/plugins/oauth-proxy";
+import { components, internal } from "./_generated/api";
 import type { DataModel } from "./_generated/dataModel";
 import authConfig from "./auth.config";
 import { sendEmail } from "./lib/email";
 
 export const authComponent = createClient<DataModel>(components.betterAuth);
 
-// One Convex deployment serves both local dev and justwrite.club, so auth links and
-// redirects use whichever of these the request came from.
-// Preview deployments (e.g. @Claude's PR branches) get magic-link sign-in too; Google's
-// redirect URIs are fixed, so Google sign-in stays on justwrite.club and localhost.
-const ORIGINS = [
-  "http://localhost:3000",
-  "https://justwrite.club",
-  "https://just-write-*-manifund.vercel.app",
-];
+// One Convex deployment serves local dev, justwrite.club, and Vercel previews (e.g.
+// @Claude's PR branches), so auth links and redirects use whichever host the request came from.
+const PRODUCTION = "https://justwrite.club";
+const ORIGINS = ["http://localhost:3000", PRODUCTION];
+const PREVIEW_HOST = /^just-write-[a-z0-9-]+-manifund\.vercel\.app$/;
+const isPreview = (origin: string) => {
+  try {
+    const u = new URL(origin);
+    return u.protocol === "https:" && PREVIEW_HOST.test(u.host);
+  } catch {
+    return false;
+  }
+};
+
+// The Convex auth proxy only trusts hosts listed exactly (not wildcards), so add the
+// preview host a request came from (sent by our Next.js proxy) when it matches.
+function trustedOrigins(request?: Request) {
+  const host = request?.headers.get("x-better-auth-forwarded-host");
+  const origin = host ? `https://${host}` : null;
+  return origin && isPreview(origin) ? [...ORIGINS, origin] : ORIGINS;
+}
+
+// Google's redirect URIs are fixed (justwrite.club and localhost), so Google sign-in on a
+// preview goes through justwrite.club and comes back. The plugin decides whether to do that
+// from the "current URL", which inside Convex would be the .convex.site URL; set it from the
+// host the request came from instead. Only previews use the detour.
+function previewGoogleSignIn() {
+  const opts: { productionURL: string; currentURL?: string } = {
+    productionURL: PRODUCTION,
+  };
+  const proxy = oAuthProxy(opts);
+  const setCurrentURL = {
+    matcher: () => true,
+    handler: createAuthMiddleware(async (ctx) => {
+      const origin = new URL(ctx.context.baseURL).origin;
+      opts.currentURL = isPreview(origin) ? origin : PRODUCTION;
+    }),
+  };
+  return {
+    ...proxy,
+    hooks: { ...proxy.hooks, before: [setCurrentURL, ...proxy.hooks.before] },
+  };
+}
+
+// Sessions made by a read-only preview link are marked with this user agent, and their
+// tokens carry `readonly: true`, which convex/lib/viewer.ts checks.
+const READONLY_AGENT = "just-write-readonly-preview";
+
+// GET /api/auth/preview-access?token=…: trades a one-time token from convex/previewAccess.ts
+// for a read-only session on whichever host this is, then opens the portal.
+function previewAccess(ctx: GenericCtx<DataModel>) {
+  return {
+    id: "preview-access",
+    endpoints: {
+      previewAccess: createAuthEndpoint(
+        "/preview-access",
+        { method: "GET" },
+        async (c) => {
+          const url = c.request ? new URL(c.request.url) : null;
+          const token = url?.searchParams.get("token") ?? "";
+          const userId =
+            token && "runMutation" in ctx
+              ? await ctx.runMutation(internal.previewAccess.consume, { token })
+              : null;
+          const user = userId
+            ? await c.context.internalAdapter.findUserById(userId)
+            : null;
+          if (!user) throw c.redirect("/sign-in?next=/home");
+          const session = await c.context.internalAdapter.createSession(
+            user.id,
+            true, // a browser-session cookie; the session itself lasts a day
+            { userAgent: READONLY_AGENT },
+          );
+          await setSessionCookie(c, { session, user }, true);
+          throw c.redirect("/home");
+        },
+      ),
+    },
+  } satisfies BetterAuthPlugin;
+}
 
 export const createAuth = (ctx: GenericCtx<DataModel>) => {
   const google =
@@ -33,11 +108,14 @@ export const createAuth = (ctx: GenericCtx<DataModel>) => {
 
   return betterAuth({
     baseURL: {
-      allowedHosts: ORIGINS.map((o) => o.replace(/^https?:\/\//, "")),
+      allowedHosts: [
+        ...ORIGINS.map((o) => o.replace(/^https?:\/\//, "")),
+        "just-write-*-manifund.vercel.app",
+      ],
       fallback: process.env.SITE_URL,
       protocol: "auto",
     },
-    trustedOrigins: ORIGINS,
+    trustedOrigins,
     database: authComponent.adapter(ctx),
     account: {
       // Signing in with Google and with a magic link to the same address is one account.
@@ -61,7 +139,21 @@ export const createAuth = (ctx: GenericCtx<DataModel>) => {
           });
         },
       }),
-      convex({ authConfig }),
+      previewGoogleSignIn(),
+      previewAccess(ctx),
+      convex({
+        authConfig,
+        jwt: {
+          // The plugin's default claims, plus whether this is a read-only preview session.
+          definePayload: ({ user, session }) => {
+            // eslint-disable-next-line @typescript-eslint/no-unused-vars
+            const { id, image, ...claims } = user;
+            return session.userAgent === READONLY_AGENT
+              ? { ...claims, readonly: true }
+              : claims;
+          },
+        },
+      }),
     ],
   } satisfies BetterAuthOptions);
 };
