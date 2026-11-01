@@ -7,15 +7,21 @@ const SUFFIXES = [
   ".notify.windows.com", // Edge
 ];
 
-export function isPushEndpoint(raw: string) {
+// The endpoint in normal form if it's on a known push service, else null. Save and send
+// the returned value, not the raw string: web-push parses URLs with Node's older parser,
+// and a plain host in a re-serialized URL reads the same to both.
+export function pushEndpoint(raw: string) {
   let url: URL;
   try {
     url = new URL(raw);
   } catch {
-    return false;
+    return null;
   }
   if (url.protocol !== "https:" || url.username || url.password || url.port)
-    return false;
-  const host = url.hostname.toLowerCase().replace(/\.$/, "");
-  return HOSTS.includes(host) || SUFFIXES.some((s) => host.endsWith(s));
+    return null;
+  const host = url.hostname.replace(/\.$/, "");
+  if (!/^[a-z0-9.-]+$/.test(host)) return null;
+  if (!HOSTS.includes(host) && !SUFFIXES.some((s) => host.endsWith(s)))
+    return null;
+  return `https://${host}${url.pathname}${url.search}`;
 }
