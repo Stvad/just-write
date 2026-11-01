@@ -10,6 +10,7 @@ import { REACTIONS } from "@/convex/lib/reactions";
 import { Avatar } from "./avatar";
 import { Composer } from "./composer";
 import { useMember, usePortal } from "./context";
+import { ImprovementCard } from "./improvement";
 import { RichText } from "./rich-text";
 import { clockTime, hostOf, PENDING, timeAgo } from "./util";
 
@@ -39,7 +40,11 @@ export function Message({
   const mine = m.authorId === me._id;
   // Sent but not yet saved (an optimistic update); it has no real id to act on yet.
   const pending = m._id.startsWith(PENDING);
-  const profileHref = author?.handle ? `/members/${author.handle}` : "/members";
+  const profileHref = author?.bot
+    ? "/improvements"
+    : author?.handle
+      ? `/members/${author.handle}`
+      : "/members";
 
   return (
     <article
@@ -68,6 +73,11 @@ export function Message({
             >
               {author?.name ?? "Someone"}
             </Link>
+            {author?.bot && (
+              <span className="bg-wash-light px-1.5 py-px text-[11px] tracking-[0.08em] text-ink-muted uppercase">
+                bot
+              </span>
+            )}
             <time
               className="text-[13px] text-ink-muted"
               title={new Date(m._creationTime).toLocaleString()}
@@ -92,6 +102,8 @@ export function Message({
               }}
             />
           </div>
+        ) : m.improvement ? (
+          <ImprovementCard card={m.improvement} isAdmin={viewer.isAdmin} />
         ) : m.essay ? (
           <EssayPost essay={m.essay} />
         ) : m.kind === "joined" ? (

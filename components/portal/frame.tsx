@@ -281,6 +281,14 @@ function Sidebar() {
             Admin
           </Link>
         )}
+        {viewer.isAdmin && (
+          <Link href="/improvements" className={cls("/improvements")}>
+            <span aria-hidden="true" className="w-5 text-center">
+              ✳
+            </span>{" "}
+            Improvements
+          </Link>
+        )}
       </nav>
 
       <nav

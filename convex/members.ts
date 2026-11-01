@@ -109,6 +109,7 @@ export const interestedList = query({
   handler: async (ctx) => {
     const rows = await ctx.db.query("members").collect();
     return rows
+      .filter((m) => !m.bot)
       .map((m) => ({
         _id: m._id,
         name: m.name,
@@ -257,11 +258,11 @@ export const roster = query({
       .query("members")
       .withIndex("by_status", (q) => q.eq("status", "committed"))
       .collect();
-    // Admins may not be committed but still post.
-    const admins = (await ctx.db.query("members").collect()).filter(
-      (m) => m.status !== "committed" && isAdminEmail(m.email),
+    // Admins may not be committed but still post, and Claude (the bot) posts too.
+    const others = (await ctx.db.query("members").collect()).filter(
+      (m) => m.status !== "committed" && (isAdminEmail(m.email) || m.bot),
     );
-    return [...rows, ...admins].map(publicMember);
+    return [...rows, ...others].map(publicMember);
   },
 });
 

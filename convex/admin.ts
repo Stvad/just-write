@@ -11,6 +11,7 @@ export const overview = query({
     const members = await ctx.db.query("members").collect();
     const essays = await ctx.db.query("essays").collect();
     return members
+      .filter((m) => !m.bot)
       .sort(
         (a, b) =>
           (b.legacyCreatedAt ?? b._creationTime) -

@@ -8,6 +8,17 @@ export const status = v.union(
   v.literal("committed"),
 );
 
+export const improvementStatus = v.union(
+  v.literal("queued"),
+  v.literal("running"),
+  v.literal("answered"),
+  v.literal("pr"),
+  v.literal("merged"),
+  v.literal("closed"),
+  v.literal("failed"),
+  v.literal("superseded"),
+);
+
 export default defineSchema({
   // Everyone who expressed interest, signed, or committed. Keyed by lowercase email,
   // which is also how a signed-in Better Auth user finds their row.
@@ -32,6 +43,8 @@ export default defineSchema({
     // Row id from the old Neon `interest` table, for Stripe sessions created before the move.
     legacyId: v.optional(v.number()),
     legacyCreatedAt: v.optional(v.number()),
+    // The @Claude bot's row. Hidden from directories; can't sign in.
+    bot: v.optional(v.boolean()),
   })
     .index("by_email", ["email"])
     .index("by_handle", ["handle"])
@@ -90,6 +103,7 @@ export default defineSchema({
     essayId: v.optional(v.id("essays")), // set on "published an essay" posts
     kind: v.optional(v.literal("joined")), // system posts, e.g. the #general welcome
     editedAt: v.optional(v.number()),
+    improvementId: v.optional(v.id("improvements")), // Claude's live status card for a run
   })
     .index("by_channel_parent", ["channelId", "parentId"])
     .index("by_parent", ["parentId"]),
@@ -116,6 +130,49 @@ export default defineSchema({
     channelId: v.id("channels"),
     lastReadAt: v.number(),
   }).index("by_member_channel", ["memberId", "channelId"]),
+
+  // @Claude site improvements: one row per run. Claude's reply in the thread renders from here.
+  improvements: defineTable({
+    number: v.number(), // 1, 2, 3…; the branch is claude/<number> unless it continues an earlier run
+    requesterId: v.id("members"),
+    channelId: v.id("channels"),
+    threadId: v.id("messages"), // top-level message of the thread the run lives in
+    requestMessageId: v.id("messages"),
+    replyMessageId: v.optional(v.id("messages")),
+    request: v.string(), // plain text of the asking message
+    status: improvementStatus,
+    steps: v.array(
+      v.object({
+        label: v.string(),
+        state: v.union(
+          v.literal("active"),
+          v.literal("done"),
+          v.literal("failed"),
+        ),
+      }),
+    ),
+    branch: v.string(),
+    previousId: v.optional(v.id("improvements")), // the earlier run whose PR this continues
+    title: v.optional(v.string()),
+    summary: v.optional(v.string()),
+    files: v.optional(v.array(v.string())),
+    checksPassed: v.optional(v.boolean()),
+    touchesConvex: v.optional(v.boolean()),
+    verdict: v.optional(v.string()), // the merge decision and why, e.g. "review: touches schema"
+    prNumber: v.optional(v.number()),
+    prUrl: v.optional(v.string()),
+    previewUrl: v.optional(v.string()),
+    revertPrUrl: v.optional(v.string()),
+    sandboxId: v.optional(v.string()), // sandbox name; kept (snapshotted) for 24h for follow-ups
+    sessionId: v.optional(v.string()), // Agent SDK session, resumed by a follow-up in the same sandbox
+    error: v.optional(v.string()),
+    startedAt: v.optional(v.number()),
+    finishedAt: v.optional(v.number()),
+    decidedBy: v.optional(v.id("members")), // admin who merged or closed it
+  })
+    .index("by_number", ["number"])
+    .index("by_thread", ["threadId"])
+    .index("by_requester", ["requesterId"]),
 
   // LLM-picked "similar writers", cached per member.
   similar: defineTable({

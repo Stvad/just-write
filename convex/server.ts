@@ -3,7 +3,8 @@
 import { v } from "convex/values";
 import type { Doc } from "./_generated/dataModel";
 import { mutation, type MutationCtx } from "./_generated/server";
-import { status } from "./schema";
+import { improvementStatus, status } from "./schema";
+import { mention, paragraph, postAsClaude, txt } from "./improvements";
 import { emptyDoc } from "./lib/richtext";
 import { checkServerSecret } from "./lib/viewer";
 
@@ -168,3 +169,140 @@ export const importLegacy = mutation({
     return { inserted, updated };
   },
 });
+
+// --- @Claude improvements (called by /api/improve, the sandbox runner, and admin actions) ---
+
+// Marks a queued run as running and returns everything the runner needs. Null if it
+// was already claimed, so a retried request can't start a second sandbox.
+export const claimImprovement = mutation({
+  args: { secret: v.string(), id: v.id("improvements") },
+  handler: async (ctx, { secret, id }) => {
+    checkServerSecret(secret);
+    const r = await ctx.db.get(id);
+    if (!r || r.status !== "queued") return null;
+    await ctx.db.patch(id, { status: "running", startedAt: Date.now() });
+
+    const [requester, channel, root, previous] = await Promise.all([
+      ctx.db.get(r.requesterId),
+      ctx.db.get(r.channelId),
+      ctx.db.get(r.threadId),
+      r.previousId ? ctx.db.get(r.previousId) : null,
+    ]);
+    const replies = await ctx.db
+      .query("messages")
+      .withIndex("by_parent", (q) => q.eq("parentId", r.threadId))
+      .collect();
+    const names = new Map<string, string>();
+    const thread = [];
+    for (const m of [root, ...replies]) {
+      if (!m || (!m.improvementId && !m.text)) continue;
+      if (!names.has(m.authorId))
+        names.set(m.authorId, (await ctx.db.get(m.authorId))?.name ?? "Someone");
+      // Claude's own cards: include what that run did instead of the empty body.
+      let text = m.text;
+      if (m.improvementId) {
+        const earlier = await ctx.db.get(m.improvementId);
+        if (!earlier || earlier._id === id) continue;
+        text = `[Run #${earlier.number}, ${earlier.status}] ${earlier.summary ?? earlier.error ?? ""}`;
+      }
+      thread.push({ author: names.get(m.authorId)!, text, at: m._creationTime });
+    }
+    return {
+      number: r.number,
+      branch: r.branch,
+      prNumber: r.prNumber ?? null,
+      // If the earlier run's sandbox is still saved, the agent picks up where it left off.
+      resumeSessionId: previous?.sessionId ?? null,
+      request: r.request,
+      requester: requester?.name ?? "A member",
+      channel: channel?.name ?? "chat",
+      threadUrl: `${process.env.SITE_URL ?? "https://justwrite.club"}/chat/${channel?.slug ?? "general"}?thread=${r.threadId}`,
+      thread,
+    };
+  },
+});
+
+// Progress and results from the runner, and decisions from admins. `step` starts a new
+// checklist line (finishing the active one); `fail` marks the active line failed.
+export const reportImprovement = mutation({
+  args: {
+    secret: v.string(),
+    id: v.id("improvements"),
+    step: v.optional(v.string()),
+    fail: v.optional(v.boolean()),
+    patch: v.optional(
+      v.object({
+        status: v.optional(improvementStatus),
+        title: v.optional(v.string()),
+        summary: v.optional(v.string()),
+        files: v.optional(v.array(v.string())),
+        checksPassed: v.optional(v.boolean()),
+        touchesConvex: v.optional(v.boolean()),
+        verdict: v.optional(v.string()),
+        prNumber: v.optional(v.number()),
+        prUrl: v.optional(v.string()),
+        previewUrl: v.optional(v.string()),
+        revertPrUrl: v.optional(v.string()),
+        sandboxId: v.optional(v.string()),
+        sessionId: v.optional(v.string()),
+        error: v.optional(v.string()),
+        decidedBy: v.optional(v.id("members")),
+      }),
+    ),
+  },
+  handler: async (ctx, { secret, id, step, fail, patch = {} }) => {
+    checkServerSecret(secret);
+    const r = await ctx.db.get(id);
+    if (!r) return;
+    let steps = r.steps;
+    const finish = (state: "done" | "failed") =>
+      steps.map((s) => (s.state === "active" ? { ...s, state } : s));
+    if (fail) steps = finish("failed");
+    if (step) {
+      if (steps.at(-1)?.label === step && steps.at(-1)?.state === "active") {
+        // same line again; nothing to do
+      } else steps = [...finish("done"), { label: step, state: "active" as const }].slice(-40);
+    }
+    const final = patch.status && patch.status !== "running" && patch.status !== "queued";
+    if (final && !fail) steps = finish("done");
+    await ctx.db.patch(id, {
+      ...patch,
+      steps,
+      ...(final && !r.finishedAt ? { finishedAt: Date.now() } : {}),
+    });
+
+    // A follow-up that produced new work takes over the earlier run's card.
+    if (
+      r.previousId &&
+      (patch.status === "pr" || patch.status === "merged")
+    ) {
+      const prev = await ctx.db.get(r.previousId);
+      if (prev?.status === "pr")
+        await ctx.db.patch(prev._id, { status: "superseded" });
+    }
+
+    if (patch.status === "merged" && r.status !== "merged")
+      await announceMerge(ctx, { ...r, ...patch });
+  },
+});
+
+// One line in #site for every change that goes live.
+async function announceMerge(ctx: MutationCtx, r: Doc<"improvements">) {
+  const site = await ctx.db
+    .query("channels")
+    .withIndex("by_slug", (q) => q.eq("slug", "site"))
+    .unique();
+  const requester = await ctx.db.get(r.requesterId);
+  const channel = await ctx.db.get(r.channelId);
+  if (!site || !requester || !channel) return;
+  await postAsClaude(ctx, {
+    channelId: site._id,
+    body: paragraph(
+      txt(`Merged #${r.number}: ${r.title ?? r.request.slice(0, 80)}. Asked by `),
+      mention(requester),
+      txt(" in "),
+      txt(`#${channel.name}`, `/chat/${channel.slug}?thread=${r.threadId}`),
+      txt("."),
+    ),
+  });
+}

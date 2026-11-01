@@ -28,6 +28,12 @@ export const DEFAULT_CHANNELS = [
     description: "Saturday writing circles at Mox, and other IRL plans.",
   },
   { slug: "random", name: "random", description: "Anything else." },
+  {
+    slug: "site",
+    name: "site",
+    description:
+      "Changes to this site. Mention @Claude anywhere to ask for one.",
+  },
 ];
 
 // How many messages the channel view loads at a time.

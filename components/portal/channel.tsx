@@ -7,7 +7,7 @@ import {
   usePaginatedQuery,
   useQuery,
 } from "convex/react";
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import {
   useCallback,
   useEffect,
@@ -19,7 +19,7 @@ import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import type { ChatMessage } from "@/convex/chat";
 import { PAGE_SIZE } from "@/convex/lib/channels";
-import { cleanBody } from "@/convex/lib/richtext";
+import { cleanBody, mentionIds } from "@/convex/lib/richtext";
 import { errorMessage } from "@/lib/convex";
 import { Avatar } from "./avatar";
 import { Composer } from "./composer";
@@ -32,7 +32,9 @@ const GROUP_MS = 5 * 60 * 1000;
 
 export function ChannelFromUrl() {
   const { slug } = useParams<{ slug: string }>();
-  return <Channel slug={slug} />;
+  // ?thread=<id> opens a thread, e.g. from #site or /improvements.
+  const thread = useSearchParams().get("thread") as Id<"messages"> | null;
+  return <Channel key={thread ?? ""} slug={slug} initialThread={thread} />;
 }
 
 // What a message will look like once the server saves it, shown while it's sending.
@@ -54,9 +56,18 @@ function pendingMessage(
       parentId: args.parentId,
       reactions: [],
       essay: null,
+      improvement: null,
     };
   } catch {
     return null; // the server will reject it with a proper error
+  }
+}
+
+function mentionsBot(body: string, roster: Map<string, { bot: boolean }>) {
+  try {
+    return mentionIds(JSON.parse(body)).some((id) => roster.get(id)?.bot);
+  } catch {
+    return false;
   }
 }
 
@@ -80,14 +91,22 @@ function addToChannel(
     );
 }
 
-export function Channel({ slug }: { slug: string }) {
+export function Channel({
+  slug,
+  initialThread = null,
+}: {
+  slug: string;
+  initialThread?: Id<"messages"> | null;
+}) {
   // The sidebar already subscribes to the channel list, so this is usually ready immediately.
   const channels = useQuery(api.chat.channels);
   const channel =
     channels === undefined
       ? undefined
       : (channels.find((c) => c.slug === slug) ?? null);
-  const [threadId, setThreadId] = useState<Id<"messages"> | null>(null);
+  const [threadId, setThreadId] = useState<Id<"messages"> | null>(
+    initialThread,
+  );
   const here = useRoom(`channel:${slug}`);
 
   if (channel === undefined) return <div className="h-full" aria-busy="true" />;
@@ -212,7 +231,7 @@ function MessageList({
   channelId: Id<"channels">;
   onOpenThread: (id: Id<"messages">) => void;
 }) {
-  const { me } = usePortal();
+  const { me, roster } = usePortal();
   const paged = usePaginatedQuery(
     api.chat.messages,
     { slug },
@@ -306,7 +325,9 @@ function MessageList({
             setError(null);
             atBottom.current = true;
             try {
-              await send({ slug, body });
+              const id = await send({ slug, body });
+              // Asking @Claude: open the thread where its live status card appears.
+              if (mentionsBot(body, roster)) onOpenThread(id);
             } catch (err) {
               setError(errorMessage(err));
               throw err;

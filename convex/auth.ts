@@ -11,7 +11,13 @@ export const authComponent = createClient<DataModel>(components.betterAuth);
 
 // One Convex deployment serves both local dev and justwrite.club, so auth links and
 // redirects use whichever of these the request came from.
-const ORIGINS = ["http://localhost:3000", "https://justwrite.club"];
+// Preview deployments (e.g. @Claude's PR branches) get magic-link sign-in too; Google's
+// redirect URIs are fixed, so Google sign-in stays on justwrite.club and localhost.
+const ORIGINS = [
+  "http://localhost:3000",
+  "https://justwrite.club",
+  "https://just-write-*-manifund.vercel.app",
+];
 
 export const createAuth = (ctx: GenericCtx<DataModel>) => {
   const google =
@@ -27,7 +33,7 @@ export const createAuth = (ctx: GenericCtx<DataModel>) => {
 
   return betterAuth({
     baseURL: {
-      allowedHosts: ORIGINS.map((o) => new URL(o).host),
+      allowedHosts: ORIGINS.map((o) => o.replace(/^https?:\/\//, "")),
       fallback: process.env.SITE_URL,
       protocol: "auto",
     },

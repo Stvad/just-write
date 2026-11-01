@@ -10,7 +10,8 @@ import {
 } from "./_generated/server";
 import { DEFAULT_CHANNELS, PAGE_SIZE } from "./lib/channels";
 import { REACTIONS } from "./lib/reactions";
-import { cleanBody } from "./lib/richtext";
+import { cardOf, ensureClaude, getClaude, startFromMessage } from "./improvements";
+import { cleanBody, mentionIds, type RichNode } from "./lib/richtext";
 import { requireAdmin, requireMember } from "./lib/viewer";
 
 // Creates the default channels, or updates their names and descriptions. Run once per deployment:
@@ -32,6 +33,7 @@ export const seedChannels = internalMutation({
       else await ctx.db.insert("channels", { ...c, order });
       order++;
     }
+    await ensureClaude(ctx);
   },
 });
 
@@ -122,6 +124,9 @@ async function hydrate(ctx: QueryCtx, msgs: Doc<"messages">[]) {
       for (const r of reacts)
         grouped.set(r.emoji, [...(grouped.get(r.emoji) ?? []), r.memberId]);
       const essay = m.essayId ? await ctx.db.get(m.essayId) : null;
+      const improvement = m.improvementId
+        ? await ctx.db.get(m.improvementId)
+        : null;
       return {
         ...m,
         reactions: [...grouped].map(([emoji, memberIds]) => ({
@@ -135,6 +140,7 @@ async function hydrate(ctx: QueryCtx, msgs: Doc<"messages">[]) {
               wordCount: essay.wordCount ?? null,
             }
           : null,
+        improvement: improvement ? cardOf(improvement) : null,
       };
     }),
   );
@@ -205,11 +211,12 @@ export const send = mutation({
     parentId: v.optional(v.id("messages")),
   },
   handler: async (ctx, args) => {
-    const { member } = await requireMember(ctx);
+    const { member, isAdmin } = await requireMember(ctx);
     const c = await channelBySlug(ctx, args.slug);
     const { body, text } = cleanBody(args.body);
     if (!text) throw new ConvexError("Write something first.");
 
+    const parentId = args.parentId;
     if (args.parentId) {
       const parent = await ctx.db.get(args.parentId);
       if (!parent || parent.channelId !== c._id || parent.parentId)
@@ -233,6 +240,17 @@ export const send = mutation({
       parentId: args.parentId,
     });
     await clearTyping(ctx, member._id, c._id);
+
+    const claude = await getClaude(ctx);
+    if (claude && mentionIds(JSON.parse(body) as RichNode).includes(claude._id))
+      await startFromMessage(ctx, {
+        member,
+        isAdmin,
+        channelId: c._id,
+        messageId: id,
+        parentId,
+        text,
+      });
     return id;
   },
 });

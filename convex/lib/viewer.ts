@@ -22,6 +22,8 @@ export async function getViewer(ctx: Ctx) {
     .query("members")
     .withIndex("by_email", (q) => q.eq("email", email))
     .unique();
+  // Nobody signs in as the bot (its address can't receive mail), but never let them act as it.
+  if (member?.bot) return { user, email, member: null, isAdmin: false };
   return { user, email, member, isAdmin: isAdminEmail(email) };
 }
 
@@ -63,6 +65,7 @@ export function publicMember(m: Doc<"members">) {
     bio: m.bio ?? null,
     image: m.image ?? null,
     committedAt: m.committedAt ?? null,
+    bot: m.bot ?? false,
   };
 }
 export type PublicMember = ReturnType<typeof publicMember>;

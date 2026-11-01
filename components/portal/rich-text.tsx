@@ -1,3 +1,4 @@
+import Link from "next/link";
 import type { ReactNode } from "react";
 import type { RichNode } from "@/convex/lib/richtext";
 
@@ -96,6 +97,9 @@ function renderMarks(n: RichNode, key: number): ReactNode {
               {out}
             </a>
           );
+        } else if (/^\/(?!\/)/.test(href)) {
+          // In-site links (only Claude's posts have these; cleanBody drops them from members').
+          out = <Link href={href}>{out}</Link>;
         }
         break;
       }
