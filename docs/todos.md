@@ -3,6 +3,7 @@
 - "Your four essays" -> "Week 1" instead of "i."
 
 - Admin: support akrolsmir@ in addition to austin@ to login to the same account
+- Admin: readonly mode for viewing @claude changes
 
 - Done:
   - [x] Switching between channels should feel much faster, no flicker
