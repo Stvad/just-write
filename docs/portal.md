@@ -1,7 +1,0 @@
-- Things to do next:
-  - [x] Switching between channels should feel much faster, no flicker
-  - [x] entering chat should show up faster (optimistic push)
-  - should track read/unread state per channel, per user
-  - set up in-app notifications
-  - hide 'similar authors' feature for now
-  - change "and Stripe has emailed you a receipt" => "and we've emailed you a receipt"
