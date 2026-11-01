@@ -7,9 +7,16 @@ import { SignInPanel } from "@/components/sign-in";
 
 const noop = () => () => {};
 
-// Only same-site paths, so ?next= can't send people elsewhere.
+// Only same-site paths, so ?next= can't send people elsewhere. It's resolved the way the
+// browser will, which catches tricks like "/\evil.com" that look like paths.
 function safeNext(raw: string | null) {
-  return raw && raw.startsWith("/") && !raw.startsWith("//") ? raw : "/home";
+  if (!raw?.startsWith("/")) return "/home";
+  try {
+    const url = new URL(raw, window.location.origin);
+    if (url.origin === window.location.origin)
+      return url.pathname + url.search + url.hash;
+  } catch {}
+  return "/home";
 }
 
 export function SignIn() {
