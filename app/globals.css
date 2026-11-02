@@ -95,6 +95,9 @@ body {
 }
 
 /* Rendered chat messages and the composer share these styles. */
+.rich {
+  overflow-wrap: anywhere; /* long URLs wrap instead of widening the column */
+}
 .rich > * + * {
   margin-top: 0.65em;
 }
