@@ -3,12 +3,12 @@
 import { ConvexBetterAuthProvider } from "@convex-dev/better-auth/react";
 import { ConvexProviderWithAuth, ConvexReactClient } from "convex/react";
 import {
-  createContext,
   useCallback,
-  useContext,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
   type ReactNode,
 } from "react";
 import { authClient } from "@/lib/auth-client";
@@ -25,51 +25,71 @@ export function Providers({ children }: { children: ReactNode }) {
   );
 }
 
-// Portal pages: the server already turned the session cookie into a Convex token
+// Portal pages: the server turns the session cookie into a Convex token and streams it in
 // (app/(portal)/layout.tsx), so the client starts authenticated and connects right away.
 // ConvexBetterAuthProvider's `initialToken` would do the same, but it rebuilds its auth
 // callback once its own session request returns, which resets the Convex connection and
 // flashes the loading screen; this one keeps the callback stable.
-const InitialToken = createContext<string | null>(null);
+//
+// The token arrives through a small store rather than props, because the server component
+// that fetches it renders beside the page, not around it.
+let initialToken: string | null | undefined; // undefined until the server has answered
+const listeners = new Set<() => void>();
+const subscribe = (fn: () => void) => {
+  listeners.add(fn);
+  return () => void listeners.delete(fn);
+};
+const getInitialToken = () => initialToken;
+const getServerToken = () => undefined;
 
-export function PortalProviders({
-  initialToken,
-  children,
-}: {
-  initialToken: string | null;
-  children: ReactNode;
-}) {
+export function SetInitialToken({ token }: { token: string | null }) {
+  useLayoutEffect(() => {
+    if (initialToken !== undefined) return;
+    initialToken = token;
+    listeners.forEach((fn) => fn());
+  }, [token]);
+  return null;
+}
+
+export function PortalProviders({ children }: { children: ReactNode }) {
   return (
-    <InitialToken.Provider value={initialToken}>
-      <ConvexProviderWithAuth client={convex} useAuth={usePortalAuth}>
-        {children}
-      </ConvexProviderWithAuth>
-    </InitialToken.Provider>
+    <ConvexProviderWithAuth client={convex} useAuth={usePortalAuth}>
+      {children}
+    </ConvexProviderWithAuth>
   );
 }
 
 function usePortalAuth() {
-  const initial = useContext(InitialToken);
-  const token = useRef(initial);
-  const [signedIn, setSignedIn] = useState(initial !== null);
+  const initial = useSyncExternalStore(
+    subscribe,
+    getInitialToken,
+    getServerToken,
+  );
+  const latest = useRef<string | null>(null);
+  const [signedOut, setSignedOut] = useState(false);
 
   // Convex calls this with forceRefreshToken before the token expires (and once right after
   // connecting); a null result means the session is gone, and PortalFrame redirects.
   const fetchAccessToken = useCallback(
     async ({ forceRefreshToken }: { forceRefreshToken: boolean }) => {
-      if (token.current && !forceRefreshToken) return token.current;
+      const known = latest.current ?? initialToken ?? null;
+      if (known && !forceRefreshToken) return known;
       const { data } = await authClient.convex.token({
         fetchOptions: { throw: false },
       });
-      token.current = data?.token ?? null;
-      if (!token.current) setSignedIn(false);
-      return token.current;
+      latest.current = data?.token ?? null;
+      if (!latest.current) setSignedOut(true);
+      return latest.current;
     },
     [],
   );
 
   return useMemo(
-    () => ({ isLoading: false, isAuthenticated: signedIn, fetchAccessToken }),
-    [signedIn, fetchAccessToken],
+    () => ({
+      isLoading: initial === undefined,
+      isAuthenticated: !!initial && !signedOut,
+      fetchAccessToken,
+    }),
+    [initial, signedOut, fetchAccessToken],
   );
 }
