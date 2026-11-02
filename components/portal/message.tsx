@@ -111,7 +111,7 @@ export function Message({
             joined Just Write 👋
           </p>
         ) : (
-          <div className="text-[17px] leading-[1.5]">
+          <div className="text-[17px] leading-[1.35]">
             <RichText body={m.body} />
             {m.editedAt && (
               <span className="text-[12px] text-ink-muted"> (edited)</span>

@@ -49,7 +49,7 @@ export function ImprovementCard({
         <p className="font-[700]">{card.title}</p>
       )}
       {card.summary && (
-        <p className="text-[17px] leading-[1.5] whitespace-pre-line">
+        <p className="text-[17px] leading-[1.35] whitespace-pre-line">
           {card.summary}
         </p>
       )}

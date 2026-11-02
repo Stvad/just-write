@@ -213,7 +213,7 @@ export function Composer({
       <div className="flex flex-col border border-ink/25 bg-cream transition-colors focus-within:border-ink/60">
         <EditorContent
           editor={editor}
-          className="px-3.5 pt-3 pb-1.5 text-[17px]"
+          className="px-3.5 pt-3 pb-1.5 text-[17px] leading-[1.35]"
         />
         <div className="flex items-center gap-0.5 px-2 pb-2">
           <Toolbar editor={editor} />

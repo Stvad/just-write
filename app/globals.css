@@ -96,7 +96,7 @@ body {
 
 /* Rendered chat messages and the composer share these styles. */
 .rich > * + * {
-  margin-top: 0.4em;
+  margin-top: 0.65em;
 }
 .rich a {
   color: var(--color-brass-text);

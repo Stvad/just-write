@@ -12,8 +12,52 @@ export function RichText({ body }: { body: string }) {
   }
   return (
     <div className="rich">
-      {(doc.content ?? []).map((n, i) => renderNode(n, i))}
+      {normalizeBlocks(doc.content ?? []).map((n, i) => renderNode(n, i))}
     </div>
+  );
+}
+
+// Writers mark paragraph breaks with blank lines (an empty paragraph, or two
+// Shift+Enter breaks in a row). Rendered literally those take a full line plus
+// margins, so turn them into plain paragraph boundaries and let the block gap
+// in `.rich` do the spacing.
+function normalizeBlocks(blocks: RichNode[]): RichNode[] {
+  const out: RichNode[] = [];
+  for (const b of blocks) {
+    if (b.type !== "paragraph") {
+      out.push(b);
+      continue;
+    }
+    for (const part of splitOnDoubleBreaks(b.content ?? [])) {
+      if (part.some((c) => !isBlank(c))) out.push({ ...b, content: part });
+    }
+  }
+  return out.length ? out : blocks;
+}
+
+function splitOnDoubleBreaks(inline: RichNode[]): RichNode[][] {
+  const parts: RichNode[][] = [[]];
+  for (let i = 0; i < inline.length; i++) {
+    const c = inline[i];
+    if (c.type === "hardBreak" && inline[i + 1]?.type === "hardBreak") {
+      while (inline[i + 1]?.type === "hardBreak") i++;
+      parts.push([]);
+      continue;
+    }
+    parts[parts.length - 1].push(c);
+  }
+  // Drop breaks left dangling at either end of each part.
+  return parts.map((p) => {
+    while (p[0]?.type === "hardBreak") p.shift();
+    while (p[p.length - 1]?.type === "hardBreak") p.pop();
+    return p;
+  });
+}
+
+function isBlank(c: RichNode): boolean {
+  return (
+    c.type === "hardBreak" ||
+    (c.type === "text" && (c.text ?? "").trim() === "")
   );
 }
 
