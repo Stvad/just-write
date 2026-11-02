@@ -30,6 +30,7 @@
     "react-dom": "19.3.0",
     "resend": "^6.37.0",
     "stripe": "^23.1.0",
+    "unicode-emoji-json": "^0.9.0",
     "zod": "^4.6.7"
   },
   "devDependencies": {
