@@ -38,3 +38,9 @@ export const DEFAULT_CHANNELS = [
 
 // How many messages the channel view loads at a time.
 export const PAGE_SIZE = 50;
+
+// #check-ins is gated: until you've posted a check-in of your own within this window,
+// other people's posts show only a short preview.
+export const CHECK_IN_SLUG = "check-ins";
+export const CHECK_IN_WINDOW_MS = 24 * 60 * 60 * 1000;
+export const CHECK_IN_PREVIEW_CHARS = 100;

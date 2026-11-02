@@ -112,6 +112,8 @@ export function Message({
           <p className="py-1 text-[16px] text-ink-muted">
             joined Just Write 👋
           </p>
+        ) : m.hidden ? (
+          <HiddenPost preview={m.text} />
         ) : (
           <div className="text-[17px] leading-[1.35]">
             <RichText body={m.body} />
@@ -352,6 +354,24 @@ function ReactionChip({
         {names.join(", ")} reacted {emoji}
       </span>
     </button>
+  );
+}
+
+// What a #check-ins post looks like before you've posted your own today: the first
+// hundred characters, then a rule and a label in the style of the day dividers.
+function HiddenPost({ preview }: { preview: string }) {
+  return (
+    <div className="py-0.5">
+      {preview && (
+        <p className="text-[17px] leading-[1.35] text-ink-muted/80">
+          {preview}
+        </p>
+      )}
+      <p className="mt-1.5 flex items-center gap-2.5 text-[12px] tracking-[0.1em] text-ink-muted uppercase">
+        <span className="h-px w-6 bg-ink/15" />
+        hidden until you’ve checked in
+      </p>
+    </div>
   );
 }
 

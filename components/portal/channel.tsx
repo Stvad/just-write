@@ -57,6 +57,7 @@ function pendingMessage(
       reactions: [],
       essay: null,
       improvement: null,
+      hidden: false,
     };
   } catch {
     return null; // the server will reject it with a proper error
@@ -156,6 +157,7 @@ export function Channel({
           key={slug}
           slug={slug}
           channelId={channel._id}
+          locked={channel.locked}
           onOpenThread={setThreadId}
         />
       </div>
@@ -225,10 +227,12 @@ function TypingIndicator({
 function MessageList({
   slug,
   channelId,
+  locked,
   onOpenThread,
 }: {
   slug: string;
   channelId: Id<"channels">;
+  locked: boolean; // #check-ins: others' posts are previews until you post today
   onOpenThread: (id: Id<"messages">) => void;
 }) {
   const { me, roster } = usePortal();
@@ -318,8 +322,15 @@ function MessageList({
       </div>
       <div className="px-[clamp(16px,3vw,32px)] pb-[max(12px,env(safe-area-inset-bottom))]">
         <TypingIndicator slug={slug} parentId={null} />
+        {locked && (
+          <p className="pb-1.5 text-[14px] text-ink-muted">
+            Post today’s check-in to read everyone else’s.
+          </p>
+        )}
         <Composer
-          placeholder={`Message #${slug}`}
+          placeholder={
+            locked ? "About 100 words of today’s writing" : `Message #${slug}`
+          }
           onTyping={onTyping}
           onSend={async (body) => {
             setError(null);

@@ -8,11 +8,17 @@ import {
   type MutationCtx,
   type QueryCtx,
 } from "./_generated/server";
-import { DEFAULT_CHANNELS, PAGE_SIZE } from "./lib/channels";
+import {
+  CHECK_IN_PREVIEW_CHARS,
+  CHECK_IN_SLUG,
+  CHECK_IN_WINDOW_MS,
+  DEFAULT_CHANNELS,
+  PAGE_SIZE,
+} from "./lib/channels";
 import { isReaction } from "./lib/reactions";
 import { cardOf, ensureClaude, getClaude, startFromMessage } from "./improvements";
 import { cleanBody, mentionIds, type RichNode } from "./lib/richtext";
-import { requireAdmin, requireMember } from "./lib/viewer";
+import { isAdminEmail, requireAdmin, requireMember } from "./lib/viewer";
 
 // Creates the default channels, or updates their names and descriptions. Run once per deployment:
 //   bunx convex run chat:seedChannels
@@ -86,7 +92,13 @@ export const channels = query({
           !!latest &&
           latest.authorId !== member._id &&
           latest._creationTime > (read?.lastReadAt ?? 0);
-        return { ...c, unread, lastMessageAt: latest?._creationTime ?? null };
+        return {
+          ...c,
+          unread,
+          lastMessageAt: latest?._creationTime ?? null,
+          // #check-ins: whether the viewer still has to post before reading others' posts.
+          locked: !!(await checkInGate(ctx, c, member)),
+        };
       }),
     );
   },
@@ -112,10 +124,75 @@ export const channel = query({
   },
 });
 
-// Adds reactions and the linked essay to each message.
-async function hydrate(ctx: QueryCtx, msgs: Doc<"messages">[]) {
+// #check-ins is gated: until you've posted a top-level check-in yourself in the last 24
+// hours, everyone else's posts and thread replies show only their first 100 characters.
+// The channel's oldest post, when an admin wrote it, is the standing intro and always
+// shows in full. Returns null when nothing should be hidden from this viewer.
+type Gate = { viewerId: Id<"members">; introId: Id<"messages"> | null };
+async function checkInGate(
+  ctx: QueryCtx,
+  c: Doc<"channels">,
+  member: Doc<"members">,
+): Promise<Gate | null> {
+  if (c.slug !== CHECK_IN_SLUG) return null;
+  const since = Date.now() - CHECK_IN_WINDOW_MS;
+  const recentPosts = await ctx.db
+    .query("messages")
+    .withIndex("by_channel_parent", (q) =>
+      q
+        .eq("channelId", c._id)
+        .eq("parentId", undefined)
+        .gt("_creationTime", since),
+    )
+    .collect();
+  if (recentPosts.some((m) => m.authorId === member._id)) return null;
+  const first = await ctx.db
+    .query("messages")
+    .withIndex("by_channel_parent", (q) =>
+      q.eq("channelId", c._id).eq("parentId", undefined),
+    )
+    .order("asc")
+    .first();
+  const firstAuthor = first ? await ctx.db.get(first.authorId) : null;
+  const introId =
+    first && firstAuthor && isAdminEmail(firstAuthor.email) ? first._id : null;
+  return { viewerId: member._id, introId };
+}
+
+// Replaces a message's body with a short preview when the gate hides it.
+function veil(m: Doc<"messages">, gate: Gate | null) {
+  if (
+    !gate ||
+    m.authorId === gate.viewerId ||
+    m._id === gate.introId ||
+    m.kind ||
+    m.essayId ||
+    m.improvementId
+  )
+    return { ...m, hidden: false };
+  const flat = m.text.replace(/\s+/g, " ").trim();
+  const preview =
+    flat.length > CHECK_IN_PREVIEW_CHARS
+      ? flat.slice(0, CHECK_IN_PREVIEW_CHARS).trimEnd() + "…"
+      : flat;
+  const body: RichNode = {
+    type: "doc",
+    content: [
+      { type: "paragraph", content: [{ type: "text", text: preview }] },
+    ],
+  };
+  return { ...m, hidden: true, text: preview, body: JSON.stringify(body) };
+}
+
+// Adds reactions and the linked essay to each message, and hides what the viewer
+// hasn't earned yet (see checkInGate).
+async function hydrate(
+  ctx: QueryCtx,
+  msgs: Doc<"messages">[],
+  gate: Gate | null,
+) {
   return await Promise.all(
-    msgs.map(async (m) => {
+    msgs.map((m) => veil(m, gate)).map(async (m) => {
       const reacts = await ctx.db
         .query("reactions")
         .withIndex("by_message", (q) => q.eq("messageId", m._id))
@@ -151,7 +228,7 @@ export type ChatMessage = Awaited<ReturnType<typeof hydrate>>[number];
 export const messages = query({
   args: { slug: v.string(), paginationOpts: paginationOptsValidator },
   handler: async (ctx, { slug, paginationOpts }) => {
-    await requireMember(ctx);
+    const { member } = await requireMember(ctx);
     const c = await channelBySlug(ctx, slug);
     const result = await ctx.db
       .query("messages")
@@ -160,7 +237,8 @@ export const messages = query({
       )
       .order("desc")
       .paginate(paginationOpts);
-    return { ...result, page: await hydrate(ctx, result.page) };
+    const gate = await checkInGate(ctx, c, member);
+    return { ...result, page: await hydrate(ctx, result.page, gate) };
   },
 });
 
@@ -169,7 +247,7 @@ export const messages = query({
 export const recent = query({
   args: { slug: v.string() },
   handler: async (ctx, { slug }) => {
-    await requireMember(ctx);
+    const { member } = await requireMember(ctx);
     const c = await channelBySlug(ctx, slug);
     const rows = await ctx.db
       .query("messages")
@@ -178,8 +256,9 @@ export const recent = query({
       )
       .order("desc")
       .take(PAGE_SIZE + 1);
+    const gate = await checkInGate(ctx, c, member);
     return {
-      messages: await hydrate(ctx, rows.slice(0, PAGE_SIZE)),
+      messages: await hydrate(ctx, rows.slice(0, PAGE_SIZE), gate),
       more: rows.length > PAGE_SIZE,
     };
   },
@@ -189,17 +268,20 @@ export const recent = query({
 export const thread = query({
   args: { parentId: v.id("messages") },
   handler: async (ctx, { parentId }) => {
-    await requireMember(ctx);
+    const { member } = await requireMember(ctx);
     const parent = await ctx.db.get(parentId);
     if (!parent) return null;
     const replies = await ctx.db
       .query("messages")
       .withIndex("by_parent", (q) => q.eq("parentId", parentId))
       .collect();
-    const [hydratedParent, ...hydratedReplies] = await hydrate(ctx, [
-      parent,
-      ...replies,
-    ]);
+    const c = await ctx.db.get(parent.channelId);
+    const gate = c ? await checkInGate(ctx, c, member) : null;
+    const [hydratedParent, ...hydratedReplies] = await hydrate(
+      ctx,
+      [parent, ...replies],
+      gate,
+    );
     return { parent: hydratedParent, replies: hydratedReplies };
   },
 });
