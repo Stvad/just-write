@@ -1,6 +1,7 @@
 - set up in-app notifications (and PWA?)
-- reactions should show who reacted immediately on hover. also, default to 4 reactions of :heart:, :thumbs-up:, :thumbs-down:, :laugh:
-- "Your four essays" -> "Week 1" instead of "i."
+- [x] reactions should show who reacted immediately on hover. also, default to 4 reactions of :heart:, :thumbs-up:, :thumbs-down:, :laugh:
+- [x] "Your four essays" -> "Week 1" instead of "i."
+- move "edited" message marker to next to the timestamp
 
 - Admin: readonly mode for viewing @claude changes
 
