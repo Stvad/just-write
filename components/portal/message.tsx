@@ -39,6 +39,7 @@ export function Message({
   const [picker, setPicker] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const closePicker = useCallback(() => setPicker(false), []);
+  const actionsRef = useRef<HTMLDivElement>(null);
   // Touch screens have no hover, so a long press opens the actions instead.
   const [held, setHeld] = useState(false);
   const articleRef = useRef<HTMLElement>(null);
@@ -59,7 +60,10 @@ export function Message({
   useEffect(() => {
     if (!held) return;
     const onDown = (e: PointerEvent) => {
-      if (!articleRef.current?.contains(e.target as Node)) closeActions();
+      const t = e.target as Element;
+      // The emoji picker renders outside the message, in <body>.
+      if (t.closest?.("[data-emoji-picker]")) return;
+      if (!articleRef.current?.contains(t)) closeActions();
     };
     document.addEventListener("pointerdown", onDown);
     return () => document.removeEventListener("pointerdown", onDown);
@@ -229,6 +233,7 @@ export function Message({
       {/* Hover actions */}
       {!editing && !pending && (
         <div
+          ref={actionsRef}
           className={`absolute -top-3.5 right-[clamp(16px,3vw,32px)] z-10 items-center border border-ink/15 bg-cream shadow-[0_4px_12px_-6px_rgb(56_33_63/0.3)] ${
             picker || confirmDelete || held
               ? "flex"
@@ -291,6 +296,7 @@ export function Message({
               </span>
               {picker && (
                 <EmojiPicker
+                  anchor={actionsRef}
                   onPick={(e) => {
                     react(e);
                     setPicker(false);
