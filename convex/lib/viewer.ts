@@ -28,16 +28,26 @@ function refuseReadonlyWrites(ctx: Ctx, readonly: boolean) {
     throw new ConvexError("This is a read-only preview, so changes aren’t saved.");
 }
 
+// The member row for an address: its primary email, or an alternate sign-in address.
+export async function memberByEmail(ctx: Ctx, email: string) {
+  const primary = await ctx.db
+    .query("members")
+    .withIndex("by_email", (q) => q.eq("email", email))
+    .unique();
+  if (primary) return primary;
+  return await ctx.db
+    .query("members")
+    .withIndex("by_altEmail", (q) => q.eq("altEmail", email))
+    .unique();
+}
+
 // The signed-in Better Auth user and their member row (matched by email), if any.
 export async function getViewer(ctx: Ctx) {
   const user = await authComponent.safeGetAuthUser(ctx);
   if (!user) return null;
   const readonly = await isReadonly(ctx);
   const email = user.email.toLowerCase();
-  const member = await ctx.db
-    .query("members")
-    .withIndex("by_email", (q) => q.eq("email", email))
-    .unique();
+  const member = await memberByEmail(ctx, email);
   // Nobody signs in as the bot (its address can't receive mail), but never let them act as it.
   if (member?.bot)
     return { user, email, member: null, isAdmin: false, readonly };

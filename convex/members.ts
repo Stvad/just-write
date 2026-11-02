@@ -1,10 +1,16 @@
 import { ConvexError, v } from "convex/values";
 import type { Id } from "./_generated/dataModel";
-import { mutation, query, type MutationCtx } from "./_generated/server";
+import {
+  internalMutation,
+  mutation,
+  query,
+  type MutationCtx,
+} from "./_generated/server";
 import {
   canEnter,
   getViewer,
   isAdminEmail,
+  memberByEmail,
   publicMember,
   requireMember,
 } from "./lib/viewer";
@@ -88,10 +94,7 @@ export const expressInterest = mutation({
       throw new ConvexError("Please add a valid email.");
     if (!link) throw new ConvexError("Please add a valid website link.");
 
-    const existing = await ctx.db
-      .query("members")
-      .withIndex("by_email", (q) => q.eq("email", email))
-      .unique();
+    const existing = await memberByEmail(ctx, email);
     if (existing) await ctx.db.patch(existing._id, { name, link });
     else
       await ctx.db.insert("members", {
@@ -249,6 +252,34 @@ export const updateProfile = mutation({
       handle,
     });
     return handle;
+  },
+});
+
+// Lets a second address sign in as an existing member (for an admin with two accounts).
+// Internal, so only the CLI can call it:
+//   bunx convex run members:setAltEmail '{"email":"...","altEmail":"..."}'
+// Pass altEmail: null to remove it.
+export const setAltEmail = internalMutation({
+  args: { email: v.string(), altEmail: v.union(v.string(), v.null()) },
+  handler: async (ctx, args) => {
+    const email = args.email.trim().toLowerCase();
+    const member = await ctx.db
+      .query("members")
+      .withIndex("by_email", (q) => q.eq("email", email))
+      .unique();
+    if (!member) throw new ConvexError(`No member with email ${email}.`);
+    if (args.altEmail === null) {
+      await ctx.db.patch(member._id, { altEmail: undefined });
+      return { email, altEmail: null };
+    }
+    const altEmail = args.altEmail.trim().toLowerCase();
+    if (!EMAIL_RE.test(altEmail) || altEmail === email)
+      throw new ConvexError("Please pass a different, valid email.");
+    const taken = await memberByEmail(ctx, altEmail);
+    if (taken && taken._id !== member._id)
+      throw new ConvexError(`${altEmail} already belongs to ${taken.name}.`);
+    await ctx.db.patch(member._id, { altEmail });
+    return { email, altEmail };
   },
 });
 

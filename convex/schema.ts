@@ -25,6 +25,8 @@ export default defineSchema({
   members: defineTable({
     name: v.string(),
     email: v.string(),
+    // A second sign-in address for the same person (admins only, set with members.setAltEmail).
+    altEmail: v.optional(v.string()),
     link: v.optional(v.string()),
     status,
     // Profile (editable in the portal)
@@ -47,6 +49,7 @@ export default defineSchema({
     bot: v.optional(v.boolean()),
   })
     .index("by_email", ["email"])
+    .index("by_altEmail", ["altEmail"])
     .index("by_handle", ["handle"])
     .index("by_status", ["status"])
     .index("by_legacyId", ["legacyId"]),
