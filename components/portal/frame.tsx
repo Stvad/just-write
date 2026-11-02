@@ -53,7 +53,7 @@ export function PortalFrame({
   );
 }
 
-function Loading() {
+export function Loading() {
   return (
     <div
       className="flex min-h-dvh items-center justify-center"
@@ -161,9 +161,11 @@ function Shell({ children }: { children: ReactNode }) {
     setOpen(false);
   }
 
+  // Fill in a missing handle or avatar once; most visits skip the write entirely.
+  const needsSync = !me.handle || (!me.image && !!viewer.user.image);
   useEffect(() => {
-    void sync();
-  }, [sync]);
+    if (needsSync) void sync();
+  }, [needsSync, sync]);
 
   return (
     <div className="flex h-dvh overflow-hidden">
@@ -246,8 +248,14 @@ function Sidebar() {
   const channels = useQuery(api.chat.channels);
   const online = useRoom("portal");
   // Keep each channel's latest messages loaded, so opening a channel shows them immediately.
+  // This waits a moment so the page's own queries aren't competing with it on first load.
   // (useQueries needs the same object between renders, so it's keyed on the slugs.)
-  const slugs = channels?.map((c) => c.slug).join(",") ?? "";
+  const [warmed, setWarmed] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(() => setWarmed(true), 1500);
+    return () => clearTimeout(t);
+  }, []);
+  const slugs = (warmed && channels?.map((c) => c.slug).join(",")) || "";
   const warm = useMemo(
     () =>
       Object.fromEntries(

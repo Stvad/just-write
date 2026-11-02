@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { ImageResponse } from "next/og";
-import { LEGEND, WEEKDAYS, WEEKS, type Event } from "./calendar";
+import { LEGEND, WEEKDAYS, WEEKS, type Event } from "./(site)/calendar";
 
 export const alt =
   "Just Write: write 4 great essays over 4 weeks. An online writing club running November 2026.";
