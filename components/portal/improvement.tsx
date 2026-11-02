@@ -5,7 +5,7 @@ import {
   closeImprovement,
   mergeImprovement,
   revertImprovement,
-} from "@/app/(site)/improvements/actions";
+} from "@/app/(portal)/improvements/actions";
 import type { ImprovementCard as Card } from "@/convex/improvements";
 import { useNow } from "./util";
 
