@@ -13,16 +13,6 @@ export const DEFAULT_CHANNELS = [
     description: "New essays are posted here automatically.",
   },
   {
-    slug: "feedback",
-    name: "feedback",
-    description: "Share a draft, ask for eyes.",
-  },
-  {
-    slug: "ideas",
-    name: "ideas",
-    description: "Essay ideas, titles, and hooks.",
-  },
-  {
     slug: "sf",
     name: "sf",
     description: "Saturday writing circles at Mox, and other IRL plans.",

@@ -48,6 +48,36 @@ export const seedChannels = internalMutation({
   },
 });
 
+// Deletes an empty channel (and its read markers and typing rows). Run with
+//   bunx convex run chat:removeChannel '{"slug": "..."}'
+// Also drop it from DEFAULT_CHANNELS, or seedChannels will recreate it.
+export const removeChannel = internalMutation({
+  args: { slug: v.string() },
+  handler: async (ctx, { slug }) => {
+    const channel = await ctx.db
+      .query("channels")
+      .withIndex("by_slug", (q) => q.eq("slug", slug))
+      .unique();
+    if (!channel) throw new ConvexError(`No channel #${slug}.`);
+    const message = await ctx.db
+      .query("messages")
+      .withIndex("by_channel_parent", (q) => q.eq("channelId", channel._id))
+      .first();
+    if (message) throw new ConvexError(`#${slug} still has messages.`);
+    for (const t of await ctx.db
+      .query("typing")
+      .withIndex("by_channel", (q) => q.eq("channelId", channel._id))
+      .collect())
+      await ctx.db.delete(t._id);
+    for (const r of await ctx.db
+      .query("reads")
+      .filter((q) => q.eq(q.field("channelId"), channel._id))
+      .collect())
+      await ctx.db.delete(r._id);
+    await ctx.db.delete(channel._id);
+  },
+});
+
 export const createChannel = mutation({
   args: { slug: v.string(), name: v.string(), description: v.string() },
   handler: async (ctx, args) => {
