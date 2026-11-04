@@ -149,8 +149,8 @@ function DateLeaf({ event: e, onClose }: { event: CalendarEvent; onClose: () => 
       {e.kind === "deadline" && (
         <span aria-hidden="true" className="absolute inset-x-0 top-0 h-1 bg-brass" />
       )}
-      <CloseButton onClose={onClose} className="absolute top-1.5 right-1.5" />
-      <p className="text-[16px] opacity-80">{monthLong.format(e.start)}</p>
+      <CloseButton onClose={onClose} className="absolute top-1.5 right-1.5 z-10" />
+      <p className="pr-12 text-[16px] opacity-80">{monthLong.format(e.start)}</p>
       <div className="mt-3 flex items-end gap-5">
         <span className="font-display text-[clamp(92px,11vw,120px)] leading-[0.74] font-[280] tracking-[-0.04em] tabular-nums">
           {p.day}
