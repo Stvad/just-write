@@ -116,6 +116,7 @@ function pendingMessage(
       reactions: [],
       essay: null,
       improvement: null,
+      event: null,
       hidden: false,
     };
   } catch {

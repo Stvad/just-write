@@ -1,4 +1,5 @@
 import { ConvexError, v } from "convex/values";
+import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import {
   internalMutation,
@@ -279,6 +280,9 @@ export const setAltEmail = internalMutation({
     if (taken && taken._id !== member._id)
       throw new ConvexError(`${altEmail} already belongs to ${taken.name}.`);
     await ctx.db.patch(member._id, { altEmail });
+    await ctx.scheduler.runAfter(0, internal.gcal.shareWith, {
+      memberId: member._id,
+    });
     return { email, altEmail };
   },
 });

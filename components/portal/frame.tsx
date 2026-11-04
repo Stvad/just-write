@@ -139,6 +139,7 @@ function PublicFrame({
           Just <span className="text-brass-light">Write</span>
         </Link>
         <nav className="flex gap-5 text-[15px] text-wash-light">
+          <Link href="/calendar">Calendar</Link>
           <Link href="/members">Members</Link>
           {!signedIn && <Link href="/sign-in?next=/home">Sign in</Link>}
         </nav>
@@ -288,6 +289,12 @@ function Sidebar() {
             ✦
           </span>{" "}
           Home
+        </Link>
+        <Link href="/calendar" className={cls("/calendar")}>
+          <span aria-hidden="true" className="w-5 text-center">
+            ◫
+          </span>{" "}
+          Calendar
         </Link>
         <Link href="/ideas" className={cls("/ideas")}>
           <span aria-hidden="true" className="w-5 text-center">

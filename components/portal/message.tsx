@@ -7,6 +7,7 @@ import { api } from "@/convex/_generated/api";
 import type { ChatMessage } from "@/convex/chat";
 import type { Id } from "@/convex/_generated/dataModel";
 import { REACTIONS } from "@/convex/lib/reactions";
+import { fmtWhen } from "@/convex/lib/time";
 import { Avatar } from "./avatar";
 import { Composer } from "./composer";
 import { EmojiPicker } from "./emoji-picker";
@@ -183,6 +184,8 @@ export function Message({
           <ImprovementCard card={m.improvement} isAdmin={viewer.isAdmin} />
         ) : m.essay ? (
           <EssayPost essay={m.essay} />
+        ) : m.event ? (
+          <EventPost event={m.event} />
         ) : m.kind === "joined" ? (
           <p className="py-1 text-[16px] text-ink-muted">
             joined Just Write 👋
@@ -327,7 +330,7 @@ export function Message({
                   </svg>
                 </ActionButton>
               )}
-              {mine && !m.essay && !m.kind && (
+              {mine && !m.essay && !m.event && !m.kind && (
                 <ActionButton
                   label="Edit"
                   onClick={() => {
@@ -457,6 +460,29 @@ function HiddenPost({ preview }: { preview: string }) {
         <span className="h-px w-6 bg-ink/15" />
         hidden until you’ve checked in
       </p>
+    </div>
+  );
+}
+
+function EventPost({ event }: { event: NonNullable<ChatMessage["event"]> }) {
+  return (
+    <div className="flex flex-col gap-2 py-1">
+      <p className="text-[16px] text-ink-muted">scheduled a session</p>
+      <Link
+        href={`/calendar/${event.slug}`}
+        className="flex max-w-[34rem] flex-col gap-1 border-l-4 border-ink bg-cream-deep px-4 py-3 no-underline transition-colors hover:bg-[#ecd5d1]"
+      >
+        <span
+          className={`font-display text-[21px] leading-[1.2] font-[450] text-pretty ${event.canceled ? "line-through" : ""}`}
+        >
+          {event.title}
+        </span>
+        <span className="text-[14px] text-ink-muted">
+          {event.canceled ? "Canceled. " : ""}
+          {fmtWhen(event.start, event.end)}
+          {event.location ? `, ${event.location}` : ""}
+        </span>
+      </Link>
     </div>
   );
 }

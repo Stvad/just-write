@@ -13,9 +13,9 @@ export const DEFAULT_CHANNELS = [
     description: "New essays are posted here automatically.",
   },
   {
-    slug: "sf",
-    name: "sf",
-    description: "Saturday writing circles at Mox, and other IRL plans.",
+    slug: "meetups",
+    name: "meetups",
+    description: "Writing circles and other sessions. New ones are posted here.",
   },
   { slug: "random", name: "random", description: "Anything else." },
   {

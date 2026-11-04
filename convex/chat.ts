@@ -202,6 +202,7 @@ function veil(m: Doc<"messages">, gate: Gate | null) {
     m._id === gate.introId ||
     m.kind ||
     m.essayId ||
+    m.eventId ||
     m.improvementId
   )
     return { ...m, hidden: false };
@@ -239,6 +240,7 @@ async function hydrate(
       const improvement = m.improvementId
         ? await ctx.db.get(m.improvementId)
         : null;
+      const event = m.eventId ? await ctx.db.get(m.eventId) : null;
       return {
         ...m,
         reactions: [...grouped].map(([emoji, memberIds]) => ({
@@ -253,6 +255,17 @@ async function hydrate(
             }
           : null,
         improvement: improvement ? cardOf(improvement) : null,
+        event: event
+          ? {
+              _id: event._id,
+              slug: event.slug ?? event._id,
+              title: event.title,
+              start: event.start,
+              end: event.end,
+              canceled: !!event.canceledAt,
+              location: event.location ?? null,
+            }
+          : null,
       };
     }),
   );
@@ -443,7 +456,7 @@ export const edit = mutation({
     const m = await ctx.db.get(args.messageId);
     if (!m || m.authorId !== member._id)
       throw new ConvexError("You can only edit your own messages.");
-    if (m.essayId || m.kind)
+    if (m.essayId || m.eventId || m.kind)
       throw new ConvexError("This post can’t be edited.");
     const { body, text } = await withImages(ctx, cleanBody(args.body));
     if (!text) throw new ConvexError("Write something first.");

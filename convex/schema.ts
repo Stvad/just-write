@@ -47,12 +47,17 @@ export default defineSchema({
     legacyCreatedAt: v.optional(v.number()),
     // The @Claude bot's row. Hidden from directories; can't sign in.
     bot: v.optional(v.boolean()),
+    // Calendar: addresses the shared Google calendar has been shared with (convex/gcal.ts),
+    // and the secret token in their personal iCal feed URL.
+    calendarSharedWith: v.optional(v.array(v.string())),
+    icsToken: v.optional(v.string()),
   })
     .index("by_email", ["email"])
     .index("by_altEmail", ["altEmail"])
     .index("by_handle", ["handle"])
     .index("by_status", ["status"])
-    .index("by_legacyId", ["legacyId"]),
+    .index("by_legacyId", ["legacyId"])
+    .index("by_icsToken", ["icsToken"]),
 
   // Published essays registered toward the 4-essay commitment.
   essays: defineTable({
@@ -105,6 +110,7 @@ export default defineSchema({
     replierIds: v.optional(v.array(v.id("members"))), // last few repliers, for thread avatars
     essayId: v.optional(v.id("essays")), // set on "published an essay" posts
     kind: v.optional(v.literal("joined")), // system posts, e.g. the #general welcome
+    eventId: v.optional(v.id("events")), // set on #meetups event announcements
     editedAt: v.optional(v.number()),
     improvementId: v.optional(v.id("improvements")), // Claude's live status card for a run
   })
@@ -176,6 +182,36 @@ export default defineSchema({
     .index("by_number", ["number"])
     .index("by_thread", ["threadId"])
     .index("by_requester", ["requesterId"]),
+
+  // Calendar events (/calendar). Times are UTC ms; the UI shows them in Pacific time.
+  events: defineTable({
+    title: v.string(),
+    slug: v.optional(v.string()), // URL: /calendar/<slug>. Set once; renaming keeps it.
+    description: v.optional(v.string()),
+    location: v.optional(v.string()), // members only; unset means "TBD"
+    link: v.optional(v.string()), // video call link for virtual sessions; members only
+    start: v.number(),
+    end: v.number(),
+    ownerId: v.id("members"),
+    cohostIds: v.array(v.id("members")),
+    // "deadline" events are reminders for the Monday essay deadlines: no RSVPs, admins edit them.
+    kind: v.optional(v.literal("deadline")),
+    canceledAt: v.optional(v.number()),
+    remindedAt: v.optional(v.number()), // the 24h reminder email went out
+    announcementId: v.optional(v.id("messages")), // the #meetups post; changes are replies to it
+    createdBy: v.id("members"),
+  })
+    .index("by_start", ["start"])
+    .index("by_slug", ["slug"]),
+
+  rsvps: defineTable({
+    eventId: v.id("events"),
+    memberId: v.id("members"),
+    response: v.union(v.literal("yes"), v.literal("maybe"), v.literal("no")),
+    updatedAt: v.number(),
+  })
+    .index("by_event", ["eventId"])
+    .index("by_event_member", ["eventId", "memberId"]),
 
   // One-time links that sign someone into a preview deployment read-only (convex/previewAccess.ts).
   previewTokens: defineTable({
