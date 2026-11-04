@@ -1,6 +1,6 @@
 "use client";
 
-import { Extension, type JSONContent } from "@tiptap/core";
+import { Extension, InputRule, type JSONContent } from "@tiptap/core";
 import Mention from "@tiptap/extension-mention";
 import Placeholder from "@tiptap/extension-placeholder";
 import {
@@ -54,6 +54,7 @@ export function Composer({
   submitLabel = "Send",
   compact,
   draftKey,
+  wordCount,
 }: {
   placeholder: string;
   onSend: (body: string) => Promise<void>;
@@ -65,6 +66,8 @@ export function Composer({
   compact?: boolean;
   /** Keeps unsent text in this browser under this key, e.g. per channel or thread. */
   draftKey?: string;
+  /** Shows how many words the message has so far, e.g. in #check-ins. */
+  wordCount?: boolean;
 }) {
   const { roster, me } = usePortal();
   const storageKey = draftKey ? `jw-draft:${me._id}:${draftKey}` : null;
@@ -171,6 +174,58 @@ export function Composer({
               },
             };
           },
+        },
+      }),
+      // Nested lists: Tab / Shift+Tab indent and outdent a list item (and stay in the
+      // editor even when they can't, e.g. on the first item), and typing "- " at the
+      // start of a list item nests it under the item above, which also works on phones.
+      Extension.create({
+        name: "nestLists",
+        priority: 1000,
+        addKeyboardShortcuts() {
+          return {
+            Tab: ({ editor }) => {
+              if (mentionRef.current || !editor.isActive("listItem"))
+                return false;
+              editor.commands.sinkListItem("listItem");
+              return true;
+            },
+            "Shift-Tab": ({ editor }) => {
+              if (!editor.isActive("listItem")) return false;
+              editor.commands.liftListItem("listItem");
+              return true;
+            },
+            // Shift+Enter at the end of a bullet starts a new bullet, like Enter;
+            // elsewhere in a bullet it still adds a line break.
+            "Shift-Enter": ({ editor }) => {
+              const { empty, $from } = editor.state.selection;
+              if (
+                !empty ||
+                !editor.isActive("listItem") ||
+                $from.parentOffset !== $from.parent.content.size
+              )
+                return false;
+              return editor.commands.splitListItem("listItem");
+            },
+          };
+        },
+        addInputRules() {
+          return [
+            new InputRule({
+              find: /^\s*[-+*]\s$/,
+              handler: ({ state, range, chain, can }) => {
+                const { $from } = state.selection;
+                if (
+                  $from.depth < 2 ||
+                  $from.node(-1).type.name !== "listItem" ||
+                  $from.index(-1) !== 0 ||
+                  !can().sinkListItem("listItem")
+                )
+                  return null;
+                chain().deleteRange(range).sinkListItem("listItem").run();
+              },
+            }),
+          ];
         },
       }),
       // Enter sends, Shift+Enter breaks the line (lists and code blocks keep their own Enter).
@@ -316,6 +371,14 @@ export function Composer({
     selector: (s) => s.editor?.isEmpty ?? true,
   });
 
+  const words = useEditorState({
+    editor,
+    selector: (s) =>
+      wordCount && s.editor
+        ? countWords(s.editor.getText({ blockSeparator: " " }))
+        : 0,
+  });
+
   useEffect(() => {
     if (autoFocus) editor?.commands.focus("end");
   }, [autoFocus, editor]);
@@ -357,7 +420,17 @@ export function Composer({
         )}
         <div className="flex items-center gap-0.5 px-2 pb-2">
           <Toolbar editor={editor} onFiles={(files) => void addFiles(files)} />
-          <span className="ml-auto hidden pr-2 text-[13px] text-ink-muted sm:inline">
+          {wordCount && (
+            <span
+              aria-live="polite"
+              className="ml-auto pr-2 text-[13px] text-ink-muted tabular-nums"
+            >
+              {words} {words === 1 ? "word" : "words"}
+            </span>
+          )}
+          <span
+            className={`${wordCount ? "" : "ml-auto"} hidden pr-2 text-[13px] text-ink-muted sm:inline`}
+          >
             {onCancel ? "Esc to cancel · " : ""}Shift+Enter for a new line
           </span>
           {onCancel && (
@@ -410,6 +483,10 @@ export function Composer({
   );
 }
 
+function countWords(text: string): number {
+  return text.split(/\s+/).filter((w) => /[\p{L}\p{N}]/u.test(w)).length;
+}
+
 function imageFiles(data: { files: FileList | null } | null): File[] {
   return [...(data?.files ?? [])].filter(
     (f) => f.type.startsWith("image/") && !f.type.includes("svg"),
@@ -437,7 +514,10 @@ function splitImages(doc: JSONContent | undefined): {
   const content: JSONContent[] = [];
   for (const n of doc.content) {
     if (n.type !== "image") content.push(n);
-    else if (typeof n.attrs?.id === "string" && typeof n.attrs?.src === "string")
+    else if (
+      typeof n.attrs?.id === "string" &&
+      typeof n.attrs?.src === "string"
+    )
       images.push({
         key: crypto.randomUUID(),
         id: n.attrs.id,

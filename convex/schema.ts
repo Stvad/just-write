@@ -51,6 +51,8 @@ export default defineSchema({
     // and the secret token in their personal iCal feed URL.
     calendarSharedWith: v.optional(v.array(v.string())),
     icsToken: v.optional(v.string()),
+    // Opted in (on /settings) to a daily email when they haven't posted in #check-ins yet.
+    checkInReminders: v.optional(v.boolean()),
   })
     .index("by_email", ["email"])
     .index("by_altEmail", ["altEmail"])
