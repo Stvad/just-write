@@ -197,7 +197,7 @@ export const channel = query({
 // The channel's oldest post, when an admin wrote it, is the standing intro and always
 // shows in full. Returns null when nothing should be hidden from this viewer.
 type Gate = { viewerId: Id<"members">; introId: Id<"messages"> | null };
-async function checkInGate(
+export async function checkInGate(
   ctx: QueryCtx,
   c: Doc<"channels">,
   member: Doc<"members">,
@@ -228,7 +228,7 @@ async function checkInGate(
 }
 
 // Replaces a message's body with a short preview when the gate hides it.
-function veil(m: Doc<"messages">, gate: Gate | null) {
+export function veil(m: Doc<"messages">, gate: Gate | null) {
   if (
     !gate ||
     m.authorId === gate.viewerId ||

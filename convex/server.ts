@@ -1,6 +1,7 @@
 // Functions called by trusted Next.js server code (Stripe webhook, email, data import).
 // They're public Convex functions guarded by CONVEX_SERVER_SECRET, which only the server knows.
 import { v } from "convex/values";
+import { internal } from "./_generated/api";
 import type { Doc } from "./_generated/dataModel";
 import { mutation, type MutationCtx } from "./_generated/server";
 import { improvementStatus, status } from "./schema";

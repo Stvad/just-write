@@ -25,7 +25,7 @@ export const notify = internalAction({
     };
     const gone: Id<"pushSubscriptions">[] = [];
     await Promise.all(
-      data.recipients.flatMap(({ subscriptions, badge }) =>
+      data.recipients.flatMap(({ subscriptions, badge, body }) =>
         subscriptions.map(async (s) => {
           // Checked when saved too; this also covers rows saved before the check existed.
           const endpoint = pushEndpoint(s.endpoint);
@@ -39,7 +39,7 @@ export const notify = internalAction({
                 endpoint,
                 keys: { p256dh: s.p256dh, auth: s.auth },
               },
-              JSON.stringify({ ...data.notification, badge }),
+              JSON.stringify({ ...data.notification, body, badge }),
               // A stalled push service shouldn't hold the action open.
               { vapidDetails, TTL: 60 * 60 * 24, timeout: 10_000 },
             );

@@ -9,7 +9,7 @@ import {
   query,
   type MutationCtx,
 } from "./_generated/server";
-import { unreadCounts } from "./chat";
+import { checkInGate, unreadCounts, veil } from "./chat";
 import { channelRoom, notificationTag } from "./lib/channels";
 import { pushEndpoint } from "./lib/pushEndpoint";
 import { mentionIds, type RichNode } from "./lib/richtext";
@@ -96,7 +96,8 @@ export const recipients = internalQuery({
     const m = await ctx.db.get(messageId);
     const channel = m && (await ctx.db.get(m.channelId));
     const author = m && (await ctx.db.get(m.authorId));
-    if (!m || !channel || !author) return null;
+    // No text means nothing to show yet, like the status card @Claude fills in as it works.
+    if (!m || !channel || !author || !m.text) return null;
 
     const direct = new Set<string>(mentionIds(JSON.parse(m.body) as RichNode));
     if (m.parentId) {
@@ -118,36 +119,46 @@ export const recipients = internalQuery({
     for (const s of await ctx.db.query("pushSubscriptions").collect())
       byMember.set(s.memberId, [...(byMember.get(s.memberId) ?? []), s]);
 
-    const targets: [Id<"members">, Doc<"pushSubscriptions">[]][] = [];
+    const targets: [Doc<"members">, Doc<"pushSubscriptions">[]][] = [];
     for (const [memberId, subs] of byMember) {
       if (memberId === m.authorId || watching.has(memberId)) continue;
       const member = await ctx.db.get(memberId);
-      if (!member || !canEnter(member, isAdminEmail(member.email))) continue;
+      if (!member) continue;
+      const admin = [member.email, member.altEmail].some(
+        (e) => e && isAdminEmail(e),
+      );
+      if (!canEnter(member, admin)) continue;
       const wants =
         direct.has(memberId) || (member.notify === "all" && !m.parentId);
-      if (wants) targets.push([memberId, subs]);
+      if (wants) targets.push([member, subs]);
     }
     const badges = await unreadCounts(
       ctx,
-      targets.map(([id]) => id),
+      targets.map(([member]) => member._id),
     );
 
-    // Essay and "joined" posts read as a sentence after the author's name.
-    const body = m.essayId || m.kind ? `${author.name} ${m.text}` : m.text;
+    // Essay, event, and "joined" posts read as a sentence after the author's name.
+    const sentence = m.essayId || m.eventId || m.kind;
     return {
       notification: {
         title: clip(
           `${author.name} ${m.parentId ? "replied in" : "in"} #${channel.name}`,
           120,
         ),
-        body: clip(body, 300),
         url: `/chat/${channel.slug}${m.parentId ? `?thread=${m.parentId}` : ""}`,
         tag: notificationTag(channel.slug, m.parentId),
       },
-      recipients: targets.map(([id, subscriptions]) => ({
-        subscriptions,
-        badge: badges.get(id) ?? 0,
-      })),
+      recipients: await Promise.all(
+        targets.map(async ([member, subscriptions]) => {
+          // Same text they'd see in the app: #check-ins stays hidden behind its gate.
+          const { text } = veil(m, await checkInGate(ctx, channel, member));
+          return {
+            subscriptions,
+            badge: badges.get(member._id) ?? 0,
+            body: clip(sentence ? `${author.name} ${text}` : text, 300),
+          };
+        }),
+      ),
     };
   },
 });

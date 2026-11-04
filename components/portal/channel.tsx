@@ -181,8 +181,6 @@ export function Channel({
   const onCloseThread = useCallback(() => closeThread(slug), [slug]);
   const here = useRoom(channelRoom(slug));
 
-
-
   if (channel === undefined) return <div className="h-full" aria-busy="true" />;
   if (channel === null) {
     return (
